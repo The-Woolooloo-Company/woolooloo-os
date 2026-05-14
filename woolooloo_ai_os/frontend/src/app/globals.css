@@ -1,0 +1,263 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════
+   Material Design 3 (Material You) — Design Tokens
+   Brand Primary: oklch(60% 0.2261 13.2) — Woolooloo Red-Pink
+   ═══════════════════════════════════════════════════════════ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* --- Color Scheme --- */
+@theme inline {
+  /* Primary — Light (brand: oklch(60% 0.2261 13.2)) */
+  --color-md-primary: oklch(60% 0.2261 13.2);
+  --color-md-on-primary: #FFFFFF;
+  --color-md-primary-container: oklch(96% 0.038 13.2);
+  --color-md-on-primary-container: oklch(22% 0.085 13.2);
+
+  /* Secondary — Light (teal: oklch(60% .1715 162.8)) */
+  --color-md-secondary: oklch(60% 0.1715 162.8);
+  --color-md-on-secondary: #FFFFFF;
+  --color-md-secondary-container: oklch(96% 0.04 162.8);
+  --color-md-on-secondary-container: oklch(20% 0.06 162.8);
+
+  /* Tertiary — Light (+30° hue shift for variety) */
+  --color-md-tertiary: oklch(62% 0.12 43.2);
+  --color-md-on-tertiary: #FFFFFF;
+  --color-md-tertiary-container: oklch(96% 0.03 43.2);
+  --color-md-on-tertiary-container: oklch(24% 0.075 43.2);
+
+  /* Error — Light */
+  --color-md-error: oklch(57% 0.22 24);
+  --color-md-on-error: #FFFFFF;
+  --color-md-error-container: oklch(96% 0.045 24);
+  --color-md-on-error-container: oklch(24% 0.08 24);
+
+  /* Surface — Light (warm neutral) */
+  --color-md-surface: oklch(99% 0.002 13.2);
+  --color-md-on-surface: oklch(17% 0.015 13.2);
+  --color-md-surface-variant: oklch(92% 0.025 13.2);
+  --color-md-on-surface-variant: oklch(44% 0.045 13.2);
+
+  --color-md-surface-container-lowest: #FFFFFF;
+  --color-md-surface-container-low: oklch(98% 0.005 13.2);
+  --color-md-surface-container: oklch(96% 0.008 13.2);
+  --color-md-surface-container-high: oklch(94% 0.01 13.2);
+  --color-md-surface-container-highest: oklch(92% 0.012 13.2);
+
+  /* Outline — Light */
+  --color-md-outline: oklch(52% 0.045 13.2);
+  --color-md-outline-variant: oklch(84% 0.02 13.2);
+
+  /* Inverse — Light */
+  --color-md-inverse-surface: oklch(19% 0.02 13.2);
+  --color-md-inverse-on-surface: oklch(95% 0.005 13.2);
+  --color-md-inverse-primary: oklch(82% 0.18 13.2);
+
+  --color-md-scrim: #000000;
+
+  /* Semantic aliases */
+  --color-background: var(--color-md-surface);
+  --color-foreground: var(--color-md-on-surface);
+  --color-card: var(--color-md-surface-container-low);
+  --color-card-foreground: var(--color-md-on-surface);
+  --color-muted: var(--color-md-surface-container);
+  --color-muted-foreground: var(--color-md-on-surface-variant);
+  --color-border: var(--color-md-outline-variant);
+  --color-ring: var(--color-md-primary);
+  --color-destructive: var(--color-md-error);
+  --color-destructive-foreground: var(--color-md-on-error);
+
+  /* Status colors — Light */
+  --color-success: oklch(52% 0.14 145);
+  --color-on-success: #FFFFFF;
+  --color-success-container: oklch(94% 0.06 145);
+  --color-info: oklch(62% 0.12 240);
+  --color-on-info: #FFFFFF;
+  --color-info-container: oklch(94% 0.05 240);
+  --color-warning: oklch(72% 0.14 80);
+  --color-on-warning: oklch(24% 0.06 80);
+  --color-warning-container: oklch(96% 0.06 80);
+
+  /* Typography Scale — Material 3 */
+  --text-display-large: 57px / 64px 1.16 var(--font-sans) 400;
+  --text-display-medium: 45px / 52px 1.16 var(--font-sans) 400;
+  --text-display-small: 36px / 44px 1.22 var(--font-sans) 400;
+  --text-headline-large: 32px / 40px 1.25 var(--font-sans) 400;
+  --text-headline-medium: 28px / 36px 1.29 var(--font-sans) 400;
+  --text-headline-small: 24px / 32px 1.33 var(--font-sans) 400;
+  --text-title-large: 22px / 28px 1.27 var(--font-sans) 500;
+  --text-title-medium: 16px / 24px 1.50 var(--font-sans) 500;
+  --text-title-small: 14px / 20px 1.43 var(--font-sans) 500;
+  --text-body-large: 16px / 24px 1.50 var(--font-sans) 400;
+  --text-body-medium: 14px / 20px 1.43 var(--font-sans) 400;
+  --text-body-small: 12px / 16px 1.33 var(--font-sans) 400;
+  --text-label-large: 14px / 20px 1.43 var(--font-sans) 500;
+  --text-label-medium: 12px / 16px 1.33 var(--font-sans) 500;
+  --text-label-small: 11px / 16px 1.45 var(--font-sans) 500;
+
+  /* Spacing — 8px baseline grid */
+  --space-2: 8px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Elevation — Material 3 (0-4) */
+  --shadow-md-1: 0 1px 3px 1px rgba(0,0,0,0.08), 0 1px 2px 0 rgba(0,0,0,0.1);
+  --shadow-md-2: 0 2px 6px 2px rgba(0,0,0,0.08), 0 1px 2px 0 rgba(0,0,0,0.1);
+  --shadow-md-3: 0 4px 8px 3px rgba(0,0,0,0.08), 0 1px 3px 0 rgba(0,0,0,0.1);
+  --shadow-md-4: 0 6px 10px 4px rgba(0,0,0,0.08), 0 2px 3px 0 rgba(0,0,0,0.1);
+  --shadow-md-5: 0 8px 12px 6px rgba(0,0,0,0.08), 0 4px 4px 0 rgba(0,0,0,0.1);
+
+  /* Border radius — Material 3 */
+  --radius-none: 0px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Motion — Material 3 curves */
+  --motion-standard: 200ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  --motion-emphasized: 300ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --motion-deceleration: 200ms cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+/* --- Dark Theme --- */
+@custom-variant dark {
+  :root {
+    /* Primary — Dark */
+    --color-md-primary: oklch(82% 0.18 13.2);
+    --color-md-on-primary: oklch(30% 0.1 13.2);
+    --color-md-primary-container: oklch(38% 0.18 13.2);
+    --color-md-on-primary-container: oklch(96% 0.038 13.2);
+
+    /* Secondary — Dark (teal) */
+    --color-md-secondary: oklch(80% 0.14 162.8);
+    --color-md-on-secondary: oklch(24% 0.08 162.8);
+    --color-md-secondary-container: oklch(36% 0.14 162.8);
+    --color-md-on-secondary-container: oklch(96% 0.04 162.8);
+
+    /* Tertiary — Dark */
+    --color-md-tertiary: oklch(80% 0.12 43.2);
+    --color-md-on-tertiary: oklch(30% 0.09 43.2);
+    --color-md-tertiary-container: oklch(42% 0.12 43.2);
+    --color-md-on-tertiary-container: oklch(96% 0.03 43.2);
+
+    /* Error — Dark */
+    --color-md-error: oklch(82% 0.16 24);
+    --color-md-on-error: oklch(32% 0.12 24);
+    --color-md-error-container: oklch(42% 0.14 24);
+    --color-md-on-error-container: oklch(96% 0.045 24);
+
+    /* Surface — Dark (warm neutral) */
+    --color-md-surface: oklch(12% 0.01 13.2);
+    --color-md-on-surface: oklch(93% 0.008 13.2);
+    --color-md-surface-variant: oklch(32% 0.04 13.2);
+    --color-md-on-surface-variant: oklch(76% 0.03 13.2);
+
+    --color-md-surface-container-lowest: oklch(10% 0.008 13.2);
+    --color-md-surface-container-low: oklch(14% 0.01 13.2);
+    --color-md-surface-container: oklch(16% 0.012 13.2);
+    --color-md-surface-container-high: oklch(19% 0.014 13.2);
+    --color-md-surface-container-highest: oklch(22% 0.016 13.2);
+
+    /* Outline — Dark */
+    --color-md-outline: oklch(62% 0.04 13.2);
+    --color-md-outline-variant: oklch(32% 0.04 13.2);
+
+    /* Inverse — Dark */
+    --color-md-inverse-surface: oklch(93% 0.008 13.2);
+    --color-md-inverse-on-surface: oklch(19% 0.02 13.2);
+    --color-md-inverse-primary: oklch(60% 0.2261 13.2);
+
+    /* Semantic aliases — Dark */
+    --color-background: var(--color-md-surface);
+    --color-foreground: var(--color-md-on-surface);
+    --color-card: var(--color-md-surface-container);
+    --color-card-foreground: var(--color-md-on-surface);
+    --color-muted: var(--color-md-surface-variant);
+    --color-muted-foreground: var(--color-md-on-surface-variant);
+    --color-border: var(--color-md-outline-variant);
+    --color-ring: var(--color-md-primary);
+    --color-destructive: var(--color-md-error);
+    --color-destructive-foreground: var(--color-md-on-error);
+
+    /* Status colors — Dark */
+    --color-success: oklch(80% 0.14 145);
+    --color-on-success: oklch(24% 0.08 145);
+    --color-success-container: oklch(36% 0.12 145);
+    --color-info: oklch(82% 0.12 240);
+    --color-on-info: oklch(24% 0.08 240);
+    --color-info-container: oklch(36% 0.1 240);
+    --color-warning: oklch(82% 0.14 80);
+    --color-on-warning: oklch(30% 0.08 80);
+    --color-warning-container: oklch(42% 0.12 80);
+
+    /* Elevation — Dark (darker shadows) */
+    --shadow-md-1: 0 1px 3px 1px rgba(0,0,0,0.3), 0 1px 2px 0 rgba(0,0,0,0.4);
+    --shadow-md-2: 0 2px 6px 2px rgba(0,0,0,0.3), 0 1px 2px 0 rgba(0,0,0,0.4);
+    --shadow-md-3: 0 4px 8px 3px rgba(0,0,0,0.3), 0 1px 3px 0 rgba(0,0,0,0.4);
+    --shadow-md-4: 0 6px 10px 4px rgba(0,0,0,0.3), 0 2px 3px 0 rgba(0,0,0,0.4);
+    --shadow-md-5: 0 8px 12px 6px rgba(0,0,0,0.3), 0 4px 4px 0 rgba(0,0,0,0.4);
+  }
+}
+
+/* --- Base Reset --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  border-color: var(--color-border);
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  color: var(--color-foreground);
+  background-color: var(--color-background);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+main {
+  min-height: 100vh;
+}
+
+/* --- Reduced Motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Focus Visible --- */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* --- Selection --- */
+::selection {
+  background-color: color-mix(in srgb, var(--color-md-primary) 30%, transparent);
+}

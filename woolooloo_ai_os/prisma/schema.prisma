@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  linearId  String?   @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  members   Member[]
+  agents    Agent[]
+  tasks     Task[]
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  name           String
+  email          String       @unique
+  slackId        String?      @unique
+  whatsappNumber String?
+  role           Role
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Agent {
+  id             String     @id @default(cuid())
+  name           String     @unique
+  status         AgentStatus @default(IDLE)
+  enabled        Boolean    @default(true)
+  lastRun        DateTime?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  executions     AgentExecution[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model AgentExecution {
+  id          String          @id @default(cuid())
+  agentId     String
+  agent       Agent           @relation(fields: [agentId], references: [id])
+  triggerType TriggerType
+  trigger     String?
+  input       Json
+  output      Json?
+  status      ExecutionStatus
+  durationMs  Int?
+  error       String?
+  createdAt   DateTime        @default(now())
+}
+
+model LinearEvent {
+  id        String   @id @default(cuid())
+  type      String
+  payload   Json
+  action    String
+  issueId   String?
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Task {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  source        TaskSource
+  linearId      String?
+  notionId      String?
+  status        TaskStatus @default(PENDING)
+  priority      Int?
+  assignedTo    String?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model RevenueSnapshot {
+  id         String   @id @default(cuid())
+  mrr        Float
+  arr        Float
+  customers  Int
+  churnRate  Float?
+  snapshotAt DateTime @default(now())
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  title       String
+  industry    String
+  type        String
+  status      String   @default("draft")
+  notionId    String?
+  content     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Lead {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  source      String
+  status      String   @default("new")
+  score       Int      @default(0)
+  qualified   Boolean  @default(false)
+  notionId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum Role {
+  FOUNDER
+  PRODUCT
+  ENGINEER
+  SALES
+  OPS
+}
+
+enum AgentStatus {
+  IDLE
+  RUNNING
+  ERROR
+}
+
+enum TriggerType {
+  EVENT
+  SCHEDULE
+  DEMAND
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskSource {
+  LINEAR
+  SLACK
+  WHATSAPP
+  NOTION
+  MANUAL
+}

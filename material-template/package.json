@@ -1,0 +1,43 @@
+{
+  "name": "material-kit-pro",
+  "version": "3.1.0",
+  "description": "Premium UI Kit for Bootstrap 5",
+  "type": "module",
+  "main": "index.html",
+  "directories": {
+    "example": "root"
+  },
+  "scripts": {
+    "open-app": "gulp open-app",
+    "start": "npm run open-app",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "compile-scss": "sass --style expanded --source-map --precision=6 assets/scss/material-kit.scss assets/css/material-kit.css --quiet",
+    "watch": "npm run compile:scss -- --watch"
+  },
+  "keywords": [
+    "material design system pro",
+    "bootstrap 5",
+    "design system",
+    "creative tim",
+    "html kit",
+    "html css kit",
+    "web kit",
+    "premium",
+    "premium bootstrap kit",
+    "css3 kit",
+    "bootstrap design system",
+    "frontend",
+    "responsive bootstrap kit"
+  ],
+  "author": "Creative Tim <hello@creative-tim.com> (https://www.creative-tim.com/)",
+  "license": "Premium",
+  "bugs": {
+    "url": "https://github.com/creativetimofficial/ct-material-kit-pro/issues"
+  },
+    "devDependencies": {
+    "gulp": "5.0.0",
+    "gulp-open": "3.0.1",
+    "sass": "1.80.2"
+  },
+  "homepage": "https://creative-tim.com/product/material-kit-pro"
+}

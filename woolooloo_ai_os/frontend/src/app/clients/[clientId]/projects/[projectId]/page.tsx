@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/navbar";
@@ -11,10 +11,20 @@ import { useToast } from "@/components/toast";
 import { AgentDispatchModal } from "@/components/agent-dispatch-modal";
 import { getClientById, ClientProject } from "@/lib/clients";
 import { useExternalProjects } from "@/hooks/useExternalProjects";
-import { getPriorityLabel, getPriorityColor, getStatusColor, LinearTask, getTasks } from "@/lib/linear";
+import { getPriorityLabel, getPriorityColor, getStatusColor, LinearTask } from "@/lib/linear";
 import { formatDuration } from "@/lib/clockify";
+import { getConfig } from "@/lib/config-store";
 
-type TabId = "tasks" | "time" | "people" | "activity";
+type TabId = "tasks" | "time" | "people" | "activity" | "integrations";
+
+interface ProjectIntegration {
+  type: "github" | "bitbucket" | "jira" | "confluence" | "linear" | "clockify";
+  connected: boolean;
+  label: string;
+  icon: string;
+  mirrorUrl?: string;
+  lastSync?: string;
+}
 
 export default function ProjectDetailPage() {
   const { clientId, projectId } = useParams();
@@ -27,12 +37,10 @@ export default function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>("tasks");
   const [syncing, setSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const { linearTasks, clockifyEntries } = useExternalProjects();
-
-  // Local task cache for sync tracking
-  const [localTasks, setLocalTasks] = useState<LinearTask[]>([]);
-  const [localEntries, setLocalEntries] = useState<any[]>([]);
 
   useEffect(() => {
     if (!clientId || !projectId) return;
@@ -74,17 +82,46 @@ export default function ProjectDetailPage() {
     return clockifyEntries.filter((e: any) => e.projectId === project.clockifyProjectId);
   }, [project, clockifyEntries]);
 
+  // Filter entries by date range
+  const filteredEntries = useMemo(() => {
+    let entries = projectEntries;
+    if (dateFrom) entries = entries.filter((e: any) => e.start >= dateFrom);
+    if (dateTo) entries = entries.filter((e: any) => e.start <= dateTo + "T23:59:59");
+    return entries;
+  }, [projectEntries, dateFrom, dateTo]);
+
+  // Sync handler
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/clockify?type=all");
+      const data = await res.json();
+      const entries = (data.timeEntries || []).filter((e: any) =>
+        e.projectId === project?.clockifyProjectId
+      );
+      const tasks = (data.linearTasks || []).filter((t: any) =>
+        t.projectId === project?.linearProjectId
+      );
+      setLastSyncTime(new Date().toLocaleTimeString());
+      showToast(`Synced ${tasks.length} tasks & ${entries.length} time entries`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Sync failed", "error");
+    } finally {
+      setSyncing(false);
+    }
+  }, [project, showToast]);
+
   const totalHours = useMemo(() =>
-    projectEntries.reduce((s: number, e: any) => s + e.duration / 3600, 0),
-    [projectEntries]
+    filteredEntries.reduce((s: number, e: any) => s + e.duration / 3600, 0),
+    [filteredEntries]
   );
 
   const totalAmount = useMemo(() =>
-    projectEntries.reduce((s: number, e: any) => {
+    filteredEntries.reduce((s: number, e: any) => {
       if (!e.billable) return s;
       return s + (e.duration / 3600) * e.billableRate;
     }, 0),
-    [projectEntries]
+    [filteredEntries]
   );
 
   const assignees = useMemo(() => {
@@ -100,83 +137,48 @@ export default function ProjectDetailPage() {
 
   const timeUsers = useMemo(() => {
     const map = new Map<string, { name: string; hours: number }>();
-    projectEntries.forEach((e: any) => {
+    filteredEntries.forEach((e: any) => {
       const name = e.userName || "Unknown";
       const existing = map.get(name) || { name, hours: 0 };
       existing.hours += e.duration / 3600;
       map.set(name, existing);
     });
     return Array.from(map.values());
-  }, [projectEntries]);
+  }, [filteredEntries]);
 
   const progress = projectTasks.length > 0
     ? Math.round((completedTasks.length / projectTasks.length) * 100)
     : 0;
 
-  // Sync handler - fetch from proxy API
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      const clockRes = await fetch('/api/clockify?type=all');
-      const clockData = await clockRes.json();
-
-      const entries = (clockData.timeEntries || []).filter((e: any) =>
-        e.projectId === project?.clockifyProjectId
-      );
-
-      // Filter Linear tasks by project
-      const allTasks = clockData.linearTasks || [];
-      const projectTasksFiltered = allTasks.filter((t: any) =>
-        t.projectId === project?.linearProjectId
-      );
-
-      setLocalTasks(projectTasksFiltered.map((t: any) => ({
-        ...t,
-        projectTitle: t.projectName || '',
-        projectKey: t.identifier || '',
-      } as LinearTask)));
-      setLocalEntries(entries);
-      setLastSyncTime(new Date().toLocaleTimeString());
-      showToast(`Synced ${projectTasksFiltered.length} tasks & ${entries.length} time entries`, "success");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Sync failed", "error");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // Use local sync data or global data
-  const displayTasks = localTasks.length ? localTasks : projectTasks;
-  const displayEntries = localEntries.length ? localEntries : projectEntries;
-
-  // Activity log: merge task events + time entries chronologically
+  // Activity log
   const activityLog = useMemo(() => {
-    const items: Array<{
-      type: 'task' | 'time';
-      date: Date;
-      task?: LinearTask;
-      entry?: any;
-    }> = [];
-
-    displayTasks.forEach((t: LinearTask) => {
+    const items: Array<{ type: "task" | "time"; date: Date; task?: LinearTask; entry?: any }> = [];
+    projectTasks.forEach((t: LinearTask) => {
       items.push({
-        type: 'task',
+        type: "task",
         date: new Date(Math.max(new Date(t.createdAt).getTime(), new Date(t.updatedAt).getTime())),
         task: t,
       });
     });
-
-    displayEntries.forEach((e: any) => {
-      items.push({
-        type: 'time',
-        date: new Date(e.start),
-        entry: e,
-      });
+    filteredEntries.forEach((e: any) => {
+      items.push({ type: "time", date: new Date(e.start), entry: e });
     });
-
     items.sort((a, b) => b.date.getTime() - a.date.getTime());
     return items;
-  }, [displayTasks, displayEntries]);
+  }, [projectTasks, filteredEntries]);
+
+  // Integrations
+  const projectIntegrations: ProjectIntegration[] = useMemo(() => {
+    const config = getConfig();
+    return [
+      { type: "linear", connected: !!project?.linearProjectId, label: "Linear", icon: "devices", lastSync: lastSyncTime || undefined },
+      { type: "clockify", connected: !!project?.clockifyProjectId, label: "Clockify", icon: "schedule", lastSync: lastSyncTime || undefined },
+      { type: "github", connected: !!config.GITHUB_TOKEN || !!config.GITHUB_REPO, label: "GitHub", icon: "code", mirrorUrl: config.GITHUB_REPO ? `https://github.com/${config.GITHUB_REPO}` : undefined },
+      { type: "bitbucket", connected: !!config.BITBUCKET_APP_KEY, label: "Bitbucket", icon: "cloud" },
+      { type: "jira", connected: !!config.JIRA_API_TOKEN || !!config.JIRA_DOMAIN, label: "Jira", icon: "bug_report", mirrorUrl: config.JIRA_DOMAIN || undefined },
+      { type: "confluence", connected: !!config.CONFLUENCE_API_TOKEN || !!config.CONFLUENCE_DOMAIN, label: "Confluence", icon: "article", mirrorUrl: config.CONFLUENCE_DOMAIN || undefined },
+    ];
+  }, [project, getConfig(), lastSyncTime]);
 
   if (!client || !project || loading) {
     return (
@@ -188,9 +190,10 @@ export default function ProjectDetailPage() {
 
   const tabs: { id: TabId; label: string; icon: string; count: number }[] = [
     { id: "tasks", label: "Tasks", icon: "checklist", count: projectTasks.length },
-    { id: "time", label: "Time", icon: "schedule", count: projectEntries.length },
+    { id: "time", label: "Time", icon: "schedule", count: filteredEntries.length },
     { id: "people", label: "People", icon: "diversity_3", count: assignees.length + timeUsers.length },
     { id: "activity", label: "Activity", icon: "timeline", count: activityLog.length },
+    { id: "integrations", label: "Integrations", icon: "link", count: projectIntegrations.filter(i => i.connected).length },
   ];
 
   return (
@@ -220,12 +223,10 @@ export default function ProjectDetailPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="tonal" onClick={handleSync} disabled={syncing}>
-              <span className={`material-symbols-rounded text-18 mr-1 ${syncing ? 'animate-spin' : ''}`}>sync</span>
-              {syncing ? 'Syncing...' : 'Sync'}
+              <span className={`material-symbols-rounded text-18 mr-1 ${syncing ? "animate-spin" : ""}`}>sync</span>
+              {syncing ? "Syncing..." : "Sync"}
             </Button>
-            {lastSyncTime && (
-              <span className="text-body-small text-md-on-surface-variant self-center">{lastSyncTime}</span>
-            )}
+            {lastSyncTime && <span className="text-body-small text-md-on-surface-variant self-center">{lastSyncTime}</span>}
             <Button variant="tonal" onClick={() => setShowAgentDispatch(true)}>
               <span className="material-symbols-rounded text-18 mr-1">smart_toy</span>
               @Agent
@@ -249,10 +250,7 @@ export default function ProjectDetailPage() {
               <span className="text-label-medium text-md-on-surface-variant">{completedTasks.length} of {projectTasks.length} tasks done</span>
             </div>
             <div className="h-2 rounded-full bg-md-surface-variant overflow-hidden">
-              <div
-                className="h-full rounded-full bg-md-primary transition-all duration-500 ease-in-out"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full rounded-full bg-md-primary transition-all duration-500 ease-in-out" style={{ width: `${progress}%` }} />
             </div>
           </CardContent>
         </Card>
@@ -358,7 +356,37 @@ export default function ProjectDetailPage() {
             {/* Time Tab */}
             {activeTab === "time" && (
               <>
-                {projectEntries.length === 0 ? (
+                {/* Date Filter */}
+                <div className="flex items-center gap-3 px-6 py-3 border-b border-md-outline-variant/50 bg-md-surface-container/30">
+                  <span className="material-symbols-rounded text-20 text-md-on-surface-variant">filter_alt</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-body-medium text-md-on-surface-variant">From:</label>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={e => setDateFrom(e.target.value)}
+                      className="rounded-lg border border-md-outline-variant bg-transparent px-3 py-1.5 text-md-on-surface text-body-medium focus:outline-none focus:border-md-primary min-h-[36px]"
+                    />
+                    <label className="text-body-medium text-md-on-surface-variant">To:</label>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={e => setDateTo(e.target.value)}
+                      className="rounded-lg border border-md-outline-variant bg-transparent px-3 py-1.5 text-md-on-surface text-body-medium focus:outline-none focus:border-md-primary min-h-[36px]"
+                    />
+                    {(dateFrom || dateTo) && (
+                      <Button variant="text" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                        <span className="material-symbols-rounded text-18">close</span>
+                        Clear
+                      </Button>
+                    )}
+                    <span className="text-body-small text-md-on-surface-variant">
+                      {filteredEntries.length} of {projectEntries.length} entries
+                    </span>
+                  </div>
+                </div>
+
+                {filteredEntries.length === 0 ? (
                   <div className="text-center py-16">
                     <span className="material-symbols-rounded text-64 text-md-on-surface-variant/30 block mb-4">schedule</span>
                     <p className="text-body-large text-md-on-surface-variant">
@@ -378,7 +406,7 @@ export default function ProjectDetailPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {projectEntries.map((entry: any) => (
+                        {filteredEntries.map((entry: any) => (
                           <tr key={entry.id} className="border-b border-md-outline-variant/25 hover:bg-md-on-surface/5 transition-colors">
                             <td className="py-4 px-6">
                               <p className="text-body-medium text-md-on-surface">{new Date(entry.start).toLocaleDateString()}</p>
@@ -418,12 +446,10 @@ export default function ProjectDetailPage() {
                   <div className="text-center py-16">
                     <span className="material-symbols-rounded text-64 text-md-on-surface-variant/30 block mb-4">timeline</span>
                     <p className="text-body-large text-md-on-surface-variant">No activity logged yet</p>
-                    <p className="text-body-small text-md-on-surface-variant mt-1">Task updates and time entries appear here</p>
                   </div>
                 ) : (
                   <div className="p-6">
                     <div className="relative">
-                      {/* Vertical timeline line */}
                       <div className="absolute left-[19px] top-4 bottom-4 w-px bg-md-outline-variant/50" />
                       <div className="space-y-2">
                         {activityLog.map((item, idx) => (
@@ -436,10 +462,20 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
+            {/* Integrations Tab */}
+            {activeTab === "integrations" && (
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {projectIntegrations.map((integration) => (
+                    <IntegrationCard key={integration.type} integration={integration} />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* People Tab */}
             {activeTab === "people" && (
               <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-md-outline-variant/50">
-                {/* Task Assignees */}
                 <div className="p-6">
                   <h3 className="text-title-large text-md-on-surface mb-4 flex items-center gap-2">
                     <span className="material-symbols-rounded text-24 text-md-primary">checklist</span>
@@ -465,7 +501,6 @@ export default function ProjectDetailPage() {
                     </div>
                   )}
                 </div>
-                {/* Time Users */}
                 <div className="p-6">
                   <h3 className="text-title-large text-md-on-surface mb-4 flex items-center gap-2">
                     <span className="material-symbols-rounded text-24 text-md-tertiary">schedule</span>
@@ -497,7 +532,6 @@ export default function ProjectDetailPage() {
         </Card>
       </main>
 
-      {/* Agent Dispatch Modal */}
       {showAgentDispatch && (
         <AgentDispatchModal
           projects={[{ id: project.id, name: project.name }]}
@@ -509,8 +543,7 @@ export default function ProjectDetailPage() {
   );
 }
 
-interface StatCardProps { icon: string; label: string; value: string; color: "primary" | "secondary" | "tertiary" | "error" | "info"; }
-function StatCard({ icon, label, value, color }: StatCardProps) {
+function StatCard({ icon, label, value, color }: { icon: string; label: string; value: string; color: "primary" | "secondary" | "tertiary" | "error" | "info" }) {
   const colorMap: Record<string, string> = {
     primary: "bg-md-primary text-md-on-primary",
     secondary: "bg-md-secondary text-md-on-secondary",
@@ -575,17 +608,13 @@ function ActivityItem({ item }: { item: { type: "task" | "time"; date: Date; tas
   const isTask = item.type === "task";
   const timeStr = item.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const dateStr = item.date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-
   return (
     <div className="flex items-start gap-3 relative">
-      {/* Timeline dot */}
       <div className={`relative z-10 flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center ${
         isTask ? "bg-md-primary/10 text-md-primary" : "bg-md-tertiary/10 text-md-tertiary"
       }`}>
         <span className="material-symbols-rounded text-20">{isTask ? "check" : "schedule"}</span>
       </div>
-
-      {/* Content */}
       <div className="flex-1 min-w-0 pt-1">
         <div className="flex items-center gap-2 flex-wrap">
           {isTask && item.task && (
@@ -603,10 +632,48 @@ function ActivityItem({ item }: { item: { type: "task" | "time"; date: Date; tas
             </>
           )}
         </div>
-        <p className="text-body-small text-md-on-surface-variant mt-0.5">
-          {dateStr} at {timeStr}
-        </p>
+        <p className="text-body-small text-md-on-surface-variant mt-0.5">{dateStr} at {timeStr}</p>
       </div>
     </div>
+  );
+}
+
+function IntegrationCard({ integration }: { integration: ProjectIntegration }) {
+  const colors: Record<string, string> = {
+    linear: "bg-md-primary/10 text-md-primary",
+    clockify: "bg-md-tertiary/10 text-md-tertiary",
+    github: "bg-md-secondary/10 text-md-secondary",
+    bitbucket: "bg-md-surface-variant/10 text-md-on-surface-variant",
+    jira: "bg-info/10 text-info",
+    confluence: "bg-warning/10 text-warning",
+  };
+  const color = colors[integration.type] || "bg-md-surface-variant/10 text-md-on-surface-variant";
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-start gap-4">
+          <div className={`h-12 w-12 rounded-2xl flex items-center justify-center ${color}`}>
+            <span className="material-symbols-rounded text-24">{integration.icon}</span>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <h3 className="text-title-large text-md-on-surface">{integration.label}</h3>
+              <Badge variant={integration.connected ? "success-tonal" : "secondary-tonal"}>
+                {integration.connected ? "Connected" : "Not configured"}
+              </Badge>
+            </div>
+            {integration.connected && integration.mirrorUrl && (
+              <a href={integration.mirrorUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-2 text-body-medium text-md-primary hover:underline">
+                <span className="material-symbols-rounded text-16">open_in_new</span>
+                Open {integration.label}
+              </a>
+            )}
+            {integration.lastSync && (
+              <p className="text-body-small text-md-on-surface-variant mt-1">Last synced: {integration.lastSync}</p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

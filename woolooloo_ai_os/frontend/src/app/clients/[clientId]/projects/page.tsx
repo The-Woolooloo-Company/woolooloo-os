@@ -58,9 +58,11 @@ export default function ClientProjectsPage() {
 
   const totalHours = useMemo(() => {
     if (!client) return 0;
-    const clockifyIds = client.projects.map(p => p.clockifyProjectId).filter((id): id is string => !!id);
-    const entries = clockifyIds.length ? clockifyEntries.filter(e => clockifyIds.includes(e.projectId)) : [];
-    return entries.reduce((s, e) => s + e.duration / 3600, 0);
+    const clockifyIds = [...new Set(client.projects.map(p => p.clockifyProjectId).filter((id): id is string => !!id))];
+    if (!clockifyIds.length) return 0;
+    // Deduplicate: if multiple projects share a Clockify ID, count entries only once
+    const uniqueEntries = new Map(clockifyEntries.filter(e => clockifyIds.includes(e.projectId)).map((e: any) => [e.id, e]));
+    return Array.from(uniqueEntries.values()).reduce((s: number, e: any) => s + e.duration / 3600, 0);
   }, [client, clockifyEntries]);
 
   const refresh = () => {
@@ -293,7 +295,11 @@ function ProjectCard({
   const clockifyId = project.clockifyProjectId || "";
   const mappedLinear = linearProjects.find(p => p.id === linearId);
   const projTasks = linearTasks.filter(t => t.projectId === linearId);
-  const projEntries = clockifyEntries.filter(e => e.projectId === clockifyId);
+  let projEntries = clockifyEntries.filter(e => e.projectId === clockifyId);
+  // andrewq only works on WoolsApp, filter his entries from Woolooloo OS
+  if (project.id === 'woolooloo-os') {
+    projEntries = projEntries.filter((e: any) => e.userName?.toLowerCase() !== 'andrewq');
+  }
   const projHours = projEntries.reduce((s: number, e: any) => s + e.duration / 3600, 0);
 
   return (

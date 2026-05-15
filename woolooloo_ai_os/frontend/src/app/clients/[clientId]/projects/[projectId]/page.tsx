@@ -117,25 +117,27 @@ export default function ProjectDetailPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const params = new URLSearchParams({ type: 'all' });
-      const now = new Date();
-      params.set('start', new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-      params.set('end', new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
-
-      const [clockRes, linearRes] = await Promise.all([
-        fetch(`/api/clockify?${params}`),
-        project?.linearProjectId ? getTasks({ projectId: project.linearProjectId }) : getTasks(),
-      ]);
-
+      const clockRes = await fetch('/api/clockify?type=all');
       const clockData = await clockRes.json();
+
       const entries = (clockData.timeEntries || []).filter((e: any) =>
         e.projectId === project?.clockifyProjectId
       );
 
-      setLocalTasks(linearRes);
+      // Filter Linear tasks by project
+      const allTasks = clockData.linearTasks || [];
+      const projectTasksFiltered = allTasks.filter((t: any) =>
+        t.projectId === project?.linearProjectId
+      );
+
+      setLocalTasks(projectTasksFiltered.map((t: any) => ({
+        ...t,
+        projectTitle: t.projectName || '',
+        projectKey: t.identifier || '',
+      } as LinearTask)));
       setLocalEntries(entries);
       setLastSyncTime(new Date().toLocaleTimeString());
-      showToast(`Synced ${linearRes.length} tasks & ${entries.length} time entries`, "success");
+      showToast(`Synced ${projectTasksFiltered.length} tasks & ${entries.length} time entries`, "success");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Sync failed", "error");
     } finally {
@@ -188,7 +190,6 @@ export default function ProjectDetailPage() {
     { id: "tasks", label: "Tasks", icon: "checklist", count: projectTasks.length },
     { id: "time", label: "Time", icon: "schedule", count: projectEntries.length },
     { id: "people", label: "People", icon: "diversity_3", count: assignees.length + timeUsers.length },
-    { id: "activity", label: "Activity", icon: "timeline", count: activityLog.length },
     { id: "activity", label: "Activity", icon: "timeline", count: activityLog.length },
   ];
 

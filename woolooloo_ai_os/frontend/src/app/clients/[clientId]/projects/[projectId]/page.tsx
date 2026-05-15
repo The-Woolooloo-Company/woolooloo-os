@@ -60,6 +60,14 @@ export default function ProjectDetailPage() {
     }
     setProject(p);
     setLoading(false);
+
+    // Auto-fetch GitHub commits on load
+    if (p.githubRepos && p.githubRepos.length > 0) {
+      fetch(`/api/github/commits?repos=${encodeURIComponent(p.githubRepos.join(','))}&days=30`)
+        .then(r => r.json())
+        .then(data => setGithubCommits(data.commits || []))
+        .catch(err => console.warn('[Project] Failed to fetch commits:', err));
+    }
   }, [clientId, projectId]);
 
   // Project-specific data

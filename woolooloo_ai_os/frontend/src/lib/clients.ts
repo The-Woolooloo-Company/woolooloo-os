@@ -341,6 +341,7 @@ export function seedMockClients(): void {
           clockifyProjectId: '686d20d53aa1ec7de1560c79', // shared Clockify project with Woolooloo OS — andrewq's time goes here
           githubRepos: [
             'The-Woolooloo-Company/woolsapp',
+            'The-Woolooloo-Company/woolooloo-os', // active dev is here (Woolooloo OS code)
           ],
           agentsEnabled: true,
           integrations: [
@@ -352,16 +353,16 @@ export function seedMockClients(): void {
         {
           id: 'woolooloo-os',
           name: 'Woolooloo OS',
-          description: 'AI-powered operations center. Note: andrewq time entries are on WoolsApp, not here.',
+          description: 'AI-powered operations center. Code lives in The-Woolooloo-Company/woolooloo-os.',
           linearProjectId: '78cedd46-c15f-45d3-b02d-d20a2593f9d4',
           linearProjectKey: 'WOS',
           clockifyProjectId: '686d20d53aa1ec7de1560c79', // shared with WoolsApp — filter out andrewq entries
-          githubRepos: ['The-Woolooloo-Company/website'],
+          githubRepos: ['The-Woolooloo-Company/woolooloo-os'],
           agentsEnabled: true,
           integrations: [
             { type: 'linear', connected: true, config: { projectId: '78cedd46-c15f-45d3-b02d-d20a2593f9d4' } },
             { type: 'clockify', connected: true, config: { projectId: '686d20d53aa1ec7de1560c79' } },
-            { type: 'github', connected: true, config: { repo: 'dvanderhaar/woolooloo_os' } },
+            { type: 'github', connected: true, config: { repo: 'The-Woolooloo-Company/woolooloo-os' } },
           ],
           createdAt: new Date(2024, 0, 1).toISOString(),
         },

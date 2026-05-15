@@ -3,7 +3,6 @@ node_modules
 out
 dist
 *.log
-.env.local
 .env
 .git
 .gitignore

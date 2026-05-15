@@ -114,11 +114,9 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-md-outline-variant/50">
-            <p className="text-body-small text-md-on-surface-variant text-center">
-              Default credentials: <span className="font-medium">dustin</span> / <span className="font-medium">WooloolooOS!</span>
-            </p>
-          </div>
+          <p className="text-body-small text-md-on-surface-variant text-center mt-8">
+            © {new Date().getFullYear()} Woolooloo Technologies
+          </p>
         </div>
       </div>
     </div>

@@ -12,9 +12,9 @@ export interface LoginCredentials {
   password: string;
 }
 
-// Default credentials (can be overridden in config)
+// Default credentials (can be overridden via Config page)
 const DEFAULT_CREDENTIALS: LoginCredentials = {
-  username: 'admin',
+  username: 'dustin',
   password: 'WooloolooOS!',
 };
 

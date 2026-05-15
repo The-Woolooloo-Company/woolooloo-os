@@ -12,6 +12,7 @@ const navItems = [
   { href: "/tasks", label: "Tasks", icon: "checklist" },
   { href: "/time-tracking", label: "Time", icon: "schedule" },
   { href: "/agents", label: "Agents", icon: "smart_toy" },
+  { href: "/workspace", label: "Workspace", icon: "workspace_premium" },
   { href: "/reports", label: "Reports", icon: "assessment" },
   { href: "/staff", label: "Staff", icon: "badge" },
   { href: "/wiki", label: "Wiki", icon: "auto_stories" },

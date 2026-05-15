@@ -150,7 +150,8 @@ export function seedMockClients(): void {
   const existing = getClients();
   // Check for latest seed version — needs 7Colours + 6 clients + githubRepos on On-guard
   const hasGithubRepos = existing.some(c => c.projects.some(p => Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
-  if (existing.length === 6 && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos) {
+  const woolsappHasClockify = existing.some(c => c.projects.some(p => p.id === 'woolsapp' && p.clockifyProjectId));
+  if (existing.length === 6 && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify) {
     return; // already has latest seed
   }
   // Either empty or outdated — re-seed with latest
@@ -334,25 +335,27 @@ export function seedMockClients(): void {
         {
           id: 'woolsapp',
           name: 'WoolsApp',
-          description: 'Woolooloo application platform',
+          description: 'Woolooloo application platform. andrewq works on this project (WhatsApp, Dashboard, AI Chat)',
           linearProjectId: '345aa2f5-b194-4dbe-84a4-f46ece9cd7a2',
           linearProjectKey: 'WA',
+          clockifyProjectId: '686d20d53aa1ec7de1560c79', // shared Clockify project with Woolooloo OS — andrewq's time goes here
           githubRepos: [
             'The-Woolooloo-Company/woolsapp',
           ],
           agentsEnabled: true,
           integrations: [
             { type: 'linear', connected: true, config: { projectId: '345aa2f5-b194-4dbe-84a4-f46ece9cd7a2' } },
+            { type: 'clockify', connected: true, config: { projectId: '686d20d53aa1ec7de1560c79' } },
           ],
           createdAt: new Date(2024, 0, 1).toISOString(),
         },
         {
           id: 'woolooloo-os',
           name: 'Woolooloo OS',
-          description: 'AI-powered operations center',
+          description: 'AI-powered operations center. Note: andrewq time entries are on WoolsApp, not here.',
           linearProjectId: '78cedd46-c15f-45d3-b02d-d20a2593f9d4',
           linearProjectKey: 'WOS',
-          clockifyProjectId: '686d20d53aa1ec7de1560c79',
+          clockifyProjectId: '686d20d53aa1ec7de1560c79', // shared with WoolsApp — filter out andrewq entries
           githubRepos: ['The-Woolooloo-Company/website'],
           agentsEnabled: true,
           integrations: [

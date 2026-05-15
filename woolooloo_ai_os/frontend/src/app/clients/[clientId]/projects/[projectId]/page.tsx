@@ -39,6 +39,7 @@ export default function ProjectDetailPage() {
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [githubCommits, setGithubCommits] = useState<any[]>([]);
 
   const { linearTasks, clockifyEntries } = useExternalProjects();
 
@@ -79,7 +80,12 @@ export default function ProjectDetailPage() {
 
   const projectEntries = useMemo(() => {
     if (!project?.clockifyProjectId) return clockifyEntries;
-    return clockifyEntries.filter((e: any) => e.projectId === project.clockifyProjectId);
+    let entries = clockifyEntries.filter((e: any) => e.projectId === project.clockifyProjectId);
+    // Filter out andrewq's entries on Woolooloo OS (he works on WoolsApp, not Woolooloo OS)
+    if (project.id === 'woolooloo-os') {
+      entries = entries.filter((e: any) => e.userName?.toLowerCase() !== 'andrewq');
+    }
+    return entries;
   }, [project, clockifyEntries]);
 
   // Filter entries by date range
@@ -94,16 +100,27 @@ export default function ProjectDetailPage() {
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await fetch("/api/clockify?type=all");
-      const data = await res.json();
+      const [clockifyRes, githubRes] = await Promise.all([
+        fetch("/api/clockify?type=all"),
+        project?.githubRepos
+          ? fetch(`/api/github/commits?repos=${encodeURIComponent(project.githubRepos.join(','))}&days=30`)
+          : Promise.resolve(null),
+      ]);
+      const data = await clockifyRes.json();
       const entries = (data.timeEntries || []).filter((e: any) =>
         e.projectId === project?.clockifyProjectId
       );
       const tasks = (data.linearTasks || []).filter((t: any) =>
         t.projectId === project?.linearProjectId
       );
+      let commitCount = 0;
+      if (githubRes) {
+        const ghData = await githubRes.json();
+        setGithubCommits(ghData.commits || []);
+        commitCount = (ghData.commits || []).length;
+      }
       setLastSyncTime(new Date().toLocaleTimeString());
-      showToast(`Synced ${tasks.length} tasks & ${entries.length} time entries`, "success");
+      showToast(`Synced ${tasks.length} tasks, ${entries.length} time entries, ${commitCount} commits`, "success");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Sync failed", "error");
     } finally {
@@ -152,7 +169,7 @@ export default function ProjectDetailPage() {
 
   // Activity log
   const activityLog = useMemo(() => {
-    const items: Array<{ type: "task" | "time"; date: Date; task?: LinearTask; entry?: any }> = [];
+    const items: Array<{ type: "task" | "time" | "commit"; date: Date; task?: LinearTask; entry?: any; commit?: any }> = [];
     projectTasks.forEach((t: LinearTask) => {
       items.push({
         type: "task",
@@ -163,9 +180,12 @@ export default function ProjectDetailPage() {
     filteredEntries.forEach((e: any) => {
       items.push({ type: "time", date: new Date(e.start), entry: e });
     });
+    githubCommits.forEach((c: any) => {
+      items.push({ type: "commit", date: new Date(c.commit_date), commit: c });
+    });
     items.sort((a, b) => b.date.getTime() - a.date.getTime());
     return items;
-  }, [projectTasks, filteredEntries]);
+  }, [projectTasks, filteredEntries, githubCommits]);
 
   // Integrations
   const projectIntegrations: ProjectIntegration[] = useMemo(() => {
@@ -604,16 +624,19 @@ function TaskRow({ task }: { task: LinearTask }) {
   );
 }
 
-function ActivityItem({ item }: { item: { type: "task" | "time"; date: Date; task?: LinearTask; entry?: any } }) {
+function ActivityItem({ item }: { item: { type: "task" | "time" | "commit"; date: Date; task?: LinearTask; entry?: any; commit?: any } }) {
   const isTask = item.type === "task";
+  const isCommit = item.type === "commit";
   const timeStr = item.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const dateStr = item.date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   return (
     <div className="flex items-start gap-3 relative">
       <div className={`relative z-10 flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center ${
-        isTask ? "bg-md-primary/10 text-md-primary" : "bg-md-tertiary/10 text-md-tertiary"
+        isTask ? "bg-md-primary/10 text-md-primary" :
+        isCommit ? "bg-md-secondary/10 text-md-secondary" :
+        "bg-md-tertiary/10 text-md-tertiary"
       }`}>
-        <span className="material-symbols-rounded text-20">{isTask ? "check" : "schedule"}</span>
+        <span className="material-symbols-rounded text-20">{isTask ? "check" : isCommit ? "code" : "schedule"}</span>
       </div>
       <div className="flex-1 min-w-0 pt-1">
         <div className="flex items-center gap-2 flex-wrap">
@@ -629,6 +652,16 @@ function ActivityItem({ item }: { item: { type: "task" | "time"; date: Date; tas
               <Badge variant="tertiary-tonal">Time</Badge>
               <span className="text-body-medium text-md-on-surface">{item.entry.description || "Time entry"}</span>
               <span className="text-body-small text-md-on-surface-variant">by {item.entry.userName}</span>
+            </>
+          )}
+          {isCommit && item.commit && (
+            <>
+              <Badge variant="secondary-tonal">Commit</Badge>
+              <span className="text-body-medium text-md-secondary font-mono text-body-small">{item.commit.shortSha}</span>
+              <a href={item.commit.html_url} target="_blank" rel="noreferrer" className="text-body-medium text-md-secondary hover:underline truncate max-w-md">
+                {item.commit.message}
+              </a>
+              <span className="text-body-small text-md-on-surface-variant">{item.commit.author} · {item.commit.repo}</span>
             </>
           )}
         </div>

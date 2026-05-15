@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { getClients, getAllProjects, Client, ClientProject } from "@/lib/clients";
 import { useExternalProjects } from "@/hooks/useExternalProjects";
 import { getStaff } from "@/lib/staff";
-import { startOfMonth, endOfMonth, eachDayOfInterval, format, parseISO, isSameWeek, subWeeks, addWeeks } from "date-fns";
+import { startOfMonth, endOfMonth, eachDayOfInterval, format, parseISO, isSameWeek, subWeeks, addWeeks, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth } from "date-fns";
 
 // Recharts
 import {
@@ -117,6 +117,38 @@ export default function ReportsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week
 
+  // ─── Date range state ─────────────────────────────────────────
+  const [dateRange, setDateRange] = useState(() => ({
+    start: startOfMonth(new Date()),
+    end: new Date(),
+  }));
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
+  const [preset, setPreset] = useState<"thisMonth" | "lastMonth" | "thisWeek" | "thisQuarter" | "allTime">("thisMonth");
+
+  // Keep custom inputs in sync
+  useEffect(() => {
+    setCustomStart(format(dateRange.start, 'yyyy-MM-dd'));
+    setCustomEnd(format(dateRange.end, 'yyyy-MM-dd'));
+  }, [dateRange.start.getTime(), dateRange.end.getTime()]);
+
+  const applyPreset = (p: typeof preset) => {
+    setPreset(p);
+    setShowCustom(false);
+    const today = new Date();
+    let range: { start: Date; end: Date };
+    switch (p) {
+      case 'thisMonth': range = { start: startOfMonth(today), end: today }; break;
+      case 'lastMonth': range = { start: startOfMonth(subMonths(today, 1)), end: endOfMonth(subMonths(today, 1)) }; break;
+      case 'thisWeek': range = { start: startOfWeek(today, { weekStartsOn: 1 }), end: today }; break;
+      case 'thisQuarter': range = { start: new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1), end: today }; break;
+      case 'allTime': range = { start: new Date(2020, 0, 1), end: today }; break;
+      default: range = { start: startOfMonth(today), end: today };
+    }
+    setDateRange(range);
+  };
+
   useEffect(() => {
     setClients(getClients());
     setAllProjects(getAllProjects());
@@ -124,16 +156,25 @@ export default function ReportsPage() {
 
   const searchTerm = searchInput.toLowerCase();
 
-  // ─── Filtered data ─────────────────────────────────────────────
+  // ─── Filtered data (by date range + search) ────────────────────
   const filteredEntries = useMemo(() => {
-    if (!searchTerm) return clockifyEntries;
-    return clockifyEntries.filter(
-      (e: any) =>
-        e.userName?.toLowerCase().includes(searchTerm) ||
-        e.projectName?.toLowerCase().includes(searchTerm) ||
-        e.description?.toLowerCase().includes(searchTerm)
-    );
-  }, [clockifyEntries, searchTerm]);
+    let entries = clockifyEntries.filter((e: any) => {
+      if (!e.start) return false;
+      try {
+        const d = parseISO(e.start);
+        return d >= dateRange.start && d <= dateRange.end;
+      } catch { return false; }
+    });
+    if (searchTerm) {
+      entries = entries.filter(
+        (e: any) =>
+          e.userName?.toLowerCase().includes(searchTerm) ||
+          e.projectName?.toLowerCase().includes(searchTerm) ||
+          e.description?.toLowerCase().includes(searchTerm)
+      );
+    }
+    return entries;
+  }, [clockifyEntries, searchTerm, dateRange]);
 
   const filteredProjects = useMemo(() => {
     if (!searchTerm) return allProjects;
@@ -153,11 +194,9 @@ export default function ReportsPage() {
     );
   }, [linearTasks, searchTerm]);
 
-  // ─── Daily hours (current month) ───────────────────────────────
+  // ─── Daily hours (selected date range) ────────────────────────
   const dailyData = useMemo(() => {
-    const start = startOfMonth(new Date());
-    const end = endOfMonth(new Date());
-    const days = eachDayOfInterval({ start, end });
+    const days = eachDayOfInterval({ start: dateRange.start, end: dateRange.end });
     const map = new Map<string, { date: string; hours: number; billable: number; amount: number }>();
     days.forEach(day => {
       const ds = format(day, "yyyy-MM-dd");
@@ -183,12 +222,12 @@ export default function ReportsPage() {
         hours: Math.round(d.hours * 10) / 10,
         billable: Math.round(d.billable * 10) / 10,
       }));
-  }, [filteredEntries]);
+  }, [filteredEntries, dateRange]);
 
-  // ─── Weekly comparison ─────────────────────────────────────────
+  // ─── Weekly comparison (relative to date range end) ────────────
   const weeklyData = useMemo(() => {
-    const refWeekStart = subWeeks(startOfMonth(new Date()), weekOffset);
-    const refWeekEnd = addWeeks(refWeekStart, 1);
+    const refWeekStart = startOfWeek(dateRange.end, { weekStartsOn: 1 });
+    const refWeekEnd = endOfWeek(dateRange.end, { weekStartsOn: 1 });
     const prevWeekStart = subWeeks(refWeekStart, 1);
     const prevWeekEnd = refWeekStart;
     const days = eachDayOfInterval({ start: prevWeekStart, end: refWeekEnd });
@@ -202,7 +241,7 @@ export default function ReportsPage() {
       try {
         const d = parseISO(e.start);
         const h = e.duration / 3600;
-        if (d >= refWeekStart && d < refWeekEnd) {
+        if (d >= refWeekStart && d <= refWeekEnd) {
           const ds = format(d, "yyyy-MM-dd");
           const entry = map.get(ds);
           if (entry) entry.current += h;
@@ -218,7 +257,7 @@ export default function ReportsPage() {
       current: Math.round(d.current * 10) / 10,
       previous: Math.round(d.previous * 10) / 10,
     }));
-  }, [filteredEntries, weekOffset]);
+  }, [filteredEntries, dateRange]);
 
   // ─── Hours by project ──────────────────────────────────────────
   const projectHours = useMemo(() => {
@@ -388,6 +427,94 @@ export default function ReportsPage() {
           <TabBar active={tab} onChange={setTab} />
         </div>
 
+        {/* ─── Date Range Navigation ─────────────────────────────── */}
+        <Card variant="tonal" className="mb-6">
+          <CardContent className="pt-6">
+            {/* Month stepper */}
+            <div className="flex items-center justify-between mb-4">
+              <Button
+                variant="text"
+                size="sm"
+                onClick={() => {
+                  setDateRange({
+                    start: subMonths(dateRange.start, 1),
+                    end: subMonths(dateRange.end, 1),
+                  });
+                  setShowCustom(false);
+                }}
+              >
+                <span className="material-symbols-rounded text-20">chevron_left</span>
+              </Button>
+
+              <div className="text-center cursor-pointer" onClick={() => {
+                setDateRange({ start: startOfMonth(new Date()), end: new Date() });
+                setShowCustom(false);
+                setPreset('thisMonth');
+              }}>
+                <p className="text-headline-small font-medium text-md-on-surface hover:text-md-primary transition-colors">
+                  {isSameMonth(dateRange.start, new Date()) && !showCustom
+                    ? format(dateRange.start, 'MMMM yyyy')
+                    : `Custom: ${format(dateRange.start, 'MMM yyyy')} — ${format(dateRange.end, 'MMM yyyy')}`
+                  }
+                </p>
+                <p className="text-body-small text-md-on-surface-variant mt-0.5">
+                  {format(dateRange.start, 'MMM d')} — {format(dateRange.end, 'MMM d, yyyy')}
+                </p>
+              </div>
+
+              <Button
+                variant="text"
+                size="sm"
+                onClick={() => {
+                  setDateRange({
+                    start: addMonths(dateRange.start, 1),
+                    end: addMonths(dateRange.end, 1),
+                  });
+                  setShowCustom(false);
+                }}
+              >
+                <span className="material-symbols-rounded text-20">chevron_right</span>
+              </Button>
+            </div>
+
+            {/* Quick presets */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <button type="button" className={`px-4 py-2 rounded-full text-label-medium transition-all duration-200 ${preset === 'thisMonth' ? 'bg-md-primary text-md-on-primary hover:bg-md-primary/90' : 'bg-md-surface-container-high text-md-on-surface hover:bg-md-surface-container-highest'}`} onClick={() => applyPreset('thisMonth')}>This Month</button>
+              <button type="button" className={`px-4 py-2 rounded-full text-label-medium transition-all duration-200 ${preset === 'lastMonth' ? 'bg-md-primary text-md-on-primary hover:bg-md-primary/90' : 'bg-md-surface-container-high text-md-on-surface hover:bg-md-surface-container-highest'}`} onClick={() => applyPreset('lastMonth')}>Last Month</button>
+              <button type="button" className={`px-4 py-2 rounded-full text-label-medium transition-all duration-200 ${preset === 'thisWeek' ? 'bg-md-primary text-md-on-primary hover:bg-md-primary/90' : 'bg-md-surface-container-high text-md-on-surface hover:bg-md-surface-container-highest'}`} onClick={() => applyPreset('thisWeek')}>This Week</button>
+              <button type="button" className={`px-4 py-2 rounded-full text-label-medium transition-all duration-200 ${preset === 'thisQuarter' ? 'bg-md-primary text-md-on-primary hover:bg-md-primary/90' : 'bg-md-surface-container-high text-md-on-surface hover:bg-md-surface-container-highest'}`} onClick={() => applyPreset('thisQuarter')}>This Quarter</button>
+              <button type="button" className={`px-4 py-2 rounded-full text-label-medium transition-all duration-200 ${preset === 'allTime' ? 'bg-md-primary text-md-on-primary hover:bg-md-primary/90' : 'bg-md-surface-container-high text-md-on-surface hover:bg-md-surface-container-highest'}`} onClick={() => applyPreset('allTime')}>All Time</button>
+              <div className="border-l border-md-outline-variant/50 mx-1" />
+              {showCustom ? (
+                <button type="button" className="px-4 py-2 rounded-full text-label-medium bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container/90 transition-all duration-200" onClick={() => setShowCustom(false)}>Hide Custom</button>
+              ) : (
+                <button type="button" className="px-4 py-2 rounded-full text-label-medium bg-md-surface-container-high text-md-on-surface hover:bg-md-surface-container-highest transition-all duration-200" onClick={() => setShowCustom(true)}>
+                  <span className="material-symbols-rounded text-18 align-middle">calendar_today</span>
+                  Custom Range
+                </button>
+              )}
+            </div>
+
+            {/* Custom date inputs */}
+            {showCustom && (
+              <div className="flex items-end gap-3 mt-4 pt-4 border-t border-md-outline-variant/50">
+                <div className="flex-1">
+                  <label className="text-body-small text-md-on-surface-variant mb-1 block">From</label>
+                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={customEnd} className="w-full rounded-lg border border-md-outline-variant bg-transparent px-4 py-2.5 text-md-on-surface focus:outline-none focus:border-md-primary focus:border-2" />
+                </div>
+                <span className="material-symbols-rounded text-24 text-md-on-surface-variant mb-3">arrow_right</span>
+                <div className="flex-1">
+                  <label className="text-body-small text-md-on-surface-variant mb-1 block">To</label>
+                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} min={customStart} className="w-full rounded-lg border border-md-outline-variant bg-transparent px-4 py-2.5 text-md-on-surface focus:outline-none focus:border-md-primary focus:border-2" />
+                </div>
+                <Button variant="filled" size="sm" onClick={() => {
+                  if (customStart && customEnd) setDateRange({ start: new Date(customStart + 'T00:00:00'), end: new Date(customEnd + 'T23:59:59') });
+                }}>Apply</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* ─── Quick Stats ─────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <QuickStatCard icon="schedule" label="Total Hours" value={`${totalHours.toFixed(1)}h`} subtitle={`${totalBillable.toFixed(1)}h billable`} color="primary" />
@@ -402,7 +529,7 @@ export default function ReportsPage() {
             {/* Daily Hours + Billable */}
             <Card>
               <CardHeader>
-                <CardTitle>Daily Hours — {format(new Date(), "MMMM yyyy")}</CardTitle>
+                <CardTitle>Daily Hours — {format(dateRange.start, 'MMM d')} to {format(dateRange.end, 'MMM d, yyyy')}</CardTitle>
                 <CardDescription>Hours logged per day (billable overlay)</CardDescription>
               </CardHeader>
               <CardContent>
@@ -719,7 +846,7 @@ export default function ReportsPage() {
             {/* Daily Hours Trend (line) */}
             <Card>
               <CardHeader>
-                <CardTitle>Hours Trend — {format(new Date(), "MMMM yyyy")}</CardTitle>
+                <CardTitle>Hours Trend — {format(dateRange.start, 'MMM d')} to {format(dateRange.end, 'MMM d, yyyy')}</CardTitle>
                 <CardDescription>Daily logged hours with running average</CardDescription>
               </CardHeader>
               <CardContent>

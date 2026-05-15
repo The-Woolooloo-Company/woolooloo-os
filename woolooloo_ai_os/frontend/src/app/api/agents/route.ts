@@ -37,27 +37,3 @@ export async function GET() {
 
   return NextResponse.json({ agents, vllmConfigured });
 }
-
-// Track agent runs (called by other routes)
-export function incrementRunCount(agentId: string, error?: string) {
-  const state = agentState.get(agentId);
-  if (state) {
-    state.runCount++;
-    state.lastRun = new Date().toLocaleTimeString();
-    if (error) {
-      state.lastError = error;
-      state.status = 'error';
-    } else {
-      state.status = 'idle';
-    }
-    agentState.set(agentId, state);
-  }
-}
-
-export function setAgentRunning(agentId: string) {
-  const state = agentState.get(agentId);
-  if (state) {
-    state.status = 'running';
-    agentState.set(agentId, state);
-  }
-}

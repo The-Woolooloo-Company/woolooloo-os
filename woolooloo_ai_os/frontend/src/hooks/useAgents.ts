@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { agentService, Agent, AgentLog } from '@/lib/agents';
-import { telemetryService, TelemetrySummary } from '@/lib/telemetry';
 
 export function useAgents() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -36,41 +35,25 @@ export function useAgents() {
     }
   }, []);
 
-  const startAgent = useCallback(async (agentId: string) => {
-    const result = await agentService.startAgent(agentId);
-    
-    telemetryService.recordAgentAction(
-      agentId,
-      result.success ? 'start' : 'error',
-      { message: result.message }
-    );
-
-    await fetchAgents();
-    return result;
+  const startAgent = useCallback(async (agentId: string, prompt?: string) => {
+    try {
+      const result = await agentService.runAgent(agentId, prompt || 'Analyze the current state.');
+      await fetchAgents();
+      return result;
+    } catch (err) {
+      console.error('Failed to start agent:', err);
+      return { success: false, message: 'Failed to run agent' };
+    }
   }, [fetchAgents]);
 
   const stopAgent = useCallback(async (agentId: string) => {
     const result = await agentService.stopAgent(agentId);
-    
-    telemetryService.recordAgentAction(
-      agentId,
-      result.success ? 'stop' : 'error',
-      { message: result.message }
-    );
-
     await fetchAgents();
     return result;
   }, [fetchAgents]);
 
   const restartAgent = useCallback(async (agentId: string) => {
     const result = await agentService.restartAgent(agentId);
-    
-    telemetryService.recordAgentAction(
-      agentId,
-      result.success ? 'restart' : 'error',
-      { message: result.message }
-    );
-
     await fetchAgents();
     return result;
   }, [fetchAgents]);
@@ -85,7 +68,6 @@ export function useAgents() {
 
   useEffect(() => {
     fetchAgents();
-    
     const interval = setInterval(fetchAgents, 30000);
     return () => clearInterval(interval);
   }, [fetchAgents]);
@@ -110,33 +92,5 @@ export function useAgents() {
     clearLogs,
     refreshAgents: fetchAgents,
     refreshLogs: () => selectedAgent && fetchLogs(selectedAgent),
-  };
-}
-
-export function useTelemetry() {
-  const [summary, setSummary] = useState<TelemetrySummary | null>(null);
-  const [events, setEvents] = useState<unknown[]>([]);
-
-  useEffect(() => {
-    telemetryService.initialize();
-    
-    const updateTelemetry = () => {
-      setSummary(telemetryService.getSummary());
-      setEvents(telemetryService.getEvents(50));
-    };
-    
-    updateTelemetry();
-
-    const interval = setInterval(updateTelemetry, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return {
-    summary,
-    events,
-    refresh: () => {
-      setSummary(telemetryService.getSummary());
-      setEvents(telemetryService.getEvents(50));
-    },
   };
 }

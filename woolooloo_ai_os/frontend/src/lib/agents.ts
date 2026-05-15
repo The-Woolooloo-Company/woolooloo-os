@@ -1,20 +1,19 @@
 import { getConfig } from './config-store';
 
-function getApiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002';
-}
-
 export type AgentStatus = 'idle' | 'running' | 'error' | 'stopped' | 'not-configured';
 
 export interface Agent {
   id: string;
   name: string;
+  displayName: string;
   status: AgentStatus;
   lastRun: string;
   lastError?: string;
   runCount: number;
   uptime: number;
   apiConfigured?: boolean;
+  category?: string;
+  description?: string;
 }
 
 export interface AgentLog {
@@ -27,59 +26,81 @@ export interface AgentLog {
 }
 
 export interface AgentAction {
-  type: 'start' | 'stop' | 'restart';
+  type: 'start' | 'stop' | 'restart' | 'run';
   agentId: string;
   timestamp: string;
   success: boolean;
   message?: string;
+  reply?: string;
 }
 
+/**
+ * Calls the Next.js API routes for agents.
+ * No external backend needed — agents run through vLLM via API routes.
+ */
 export const agentService = {
   async getAgents(): Promise<Agent[]> {
     try {
-      const res = await fetch(`${getApiBase()}/api/agents`);
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
+      const res = await fetch('/api/agents');
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
-      return (data.agents || data).map((a: any) => ({
-        id: a.type || a.name,
-        name: a.displayName || `${a.name.charAt(0).toUpperCase() + a.name.slice(1)} Agent`,
-        status: 'idle',
-        lastRun: a.lastRun || 'Never',
-        lastError: undefined,
-        runCount: a.runCount || 0,
-        uptime: a.uptime || 0,
-        apiConfigured: true,
-      }));
-    } catch (error: any) {
+      return data.agents || [];
+    } catch (error) {
       console.error('Failed to fetch agents:', error);
-      return this.getMockAgents().map((agent: Agent) => ({
-        ...agent,
-        apiConfigured: false,
-      }));
+      return this.getMockAgents();
     }
   },
 
   async getAgent(agentId: string): Promise<Agent> {
     try {
-      const res = await fetch(`${getApiBase()}/api/agents/${agentId}`);
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
+      const res = await fetch(`/api/agents/${agentId}`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
       return res.json();
     } catch (error) {
       console.error('Failed to fetch agent:', error);
-      const mock = this.getMockAgent(agentId);
-      return { ...mock, apiConfigured: false };
+      return {
+        id: agentId,
+        name: agentId,
+        displayName: agentId,
+        status: 'not-configured',
+        lastRun: 'Never',
+        runCount: 0,
+        uptime: 0,
+      };
+    }
+  },
+
+  async runAgent(agentId: string, prompt: string): Promise<AgentAction> {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const result = await res.json();
+      return {
+        type: 'run',
+        agentId,
+        timestamp: new Date().toISOString(),
+        success: result.success,
+        message: result.error || 'Agent completed',
+        reply: result.reply,
+      };
+    } catch (error) {
+      console.error('Failed to run agent:', error);
+      return {
+        type: 'run',
+        agentId,
+        timestamp: new Date().toISOString(),
+        success: false,
+        message: 'Failed to run agent',
+      };
     }
   },
 
   async startAgent(agentId: string): Promise<AgentAction> {
     try {
-      const res = await fetch(`${getApiBase()}/api/agents/${agentId}/start`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/agents/${agentId}?action=start`, { method: 'POST' });
       const result = await res.json();
       return {
         type: 'start',
@@ -88,23 +109,14 @@ export const agentService = {
         success: result.success,
         message: result.message,
       };
-    } catch (error) {
-      console.error('Mock: Failed to start agent - API not running', agentId);
-      return {
-        type: 'start',
-        agentId,
-        timestamp: new Date().toISOString(),
-        success: false,
-        message: 'Backend API not running',
-      };
+    } catch {
+      return { type: 'start', agentId, timestamp: new Date().toISOString(), success: false, message: 'Failed to start agent' };
     }
   },
 
   async stopAgent(agentId: string): Promise<AgentAction> {
     try {
-      const res = await fetch(`${getApiBase()}/api/agents/${agentId}/stop`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/agents/${agentId}?action=stop`, { method: 'POST' });
       const result = await res.json();
       return {
         type: 'stop',
@@ -113,23 +125,14 @@ export const agentService = {
         success: result.success,
         message: result.message,
       };
-    } catch (error) {
-      console.error('Mock: Failed to stop agent - API not running', agentId);
-      return {
-        type: 'stop',
-        agentId,
-        timestamp: new Date().toISOString(),
-        success: false,
-        message: 'Backend API not running',
-      };
+    } catch {
+      return { type: 'stop', agentId, timestamp: new Date().toISOString(), success: false, message: 'Failed to stop agent' };
     }
   },
 
   async restartAgent(agentId: string): Promise<AgentAction> {
     try {
-      const res = await fetch(`${getApiBase()}/api/agents/${agentId}/restart`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/agents/${agentId}?action=restart`, { method: 'POST' });
       const result = await res.json();
       return {
         type: 'restart',
@@ -138,127 +141,44 @@ export const agentService = {
         success: result.success,
         message: result.message,
       };
-    } catch (error) {
-      console.error('Mock: Failed to restart agent - API not running', agentId);
-      return {
-        type: 'restart',
-        agentId,
-        timestamp: new Date().toISOString(),
-        success: false,
-        message: 'Backend API not running',
-      };
+    } catch {
+      return { type: 'restart', agentId, timestamp: new Date().toISOString(), success: false, message: 'Failed to restart agent' };
     }
   },
 
   async getAgentLogs(agentId: string, limit = 100): Promise<AgentLog[]> {
     try {
-      const res = await fetch(
-        `${getApiBase()}/api/agents/${agentId}/logs?limit=${limit}`
-      );
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
+      const res = await fetch(`/api/agents/${agentId}?action=logs`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      return data.logs || [];
+    } catch {
       return this.getMockLogs(agentId);
     }
   },
 
   async clearAgentLogs(agentId: string): Promise<boolean> {
     try {
-      const res = await fetch(`${getApiBase()}/api/agents/${agentId}/logs`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/agents/${agentId}`, { method: 'DELETE' });
       return res.ok;
-    } catch (error) {
-      console.error('Failed to clear logs:', error);
+    } catch {
       return false;
     }
   },
 
-  // Mock data for development
   getMockAgents(): Agent[] {
     return [
-      {
-        id: 'product',
-        name: 'Product Agent',
-        status: 'not-configured',
-        lastRun: 'Never',
-        runCount: 0,
-        uptime: 0,
-        apiConfigured: false,
-      },
-      {
-        id: 'dev',
-        name: 'Dev Agent',
-        status: 'not-configured',
-        lastRun: 'Never',
-        runCount: 0,
-        uptime: 0,
-        apiConfigured: false,
-      },
-      {
-        id: 'growth',
-        name: 'Growth Agent',
-        status: 'not-configured',
-        lastRun: 'Never',
-        runCount: 0,
-        uptime: 0,
-        apiConfigured: false,
-      },
-      {
-        id: 'sales',
-        name: 'Sales Agent',
-        status: 'not-configured',
-        lastRun: 'Never',
-        runCount: 0,
-        uptime: 0,
-        apiConfigured: false,
-      },
-      {
-        id: 'ops',
-        name: 'Ops Agent',
-        status: 'not-configured',
-        lastRun: 'Never',
-        runCount: 0,
-        uptime: 0,
-        apiConfigured: false,
-      },
-      {
-        id: 'founder',
-        name: 'Founder Agent',
-        status: 'not-configured',
-        lastRun: 'Never',
-        runCount: 0,
-        uptime: 0,
-        apiConfigured: false,
-      },
+      { id: 'product', name: 'Product Agent', displayName: 'Product', status: 'idle', lastRun: 'Never', runCount: 0, uptime: 100, category: 'Product', description: 'Product strategy and analysis agent' },
+      { id: 'dev', name: 'Dev Agent', displayName: 'Dev', status: 'idle', lastRun: 'Never', runCount: 0, uptime: 100, category: 'Development', description: 'Development automation and code review agent' },
+      { id: 'growth', name: 'Growth Agent', displayName: 'Growth', status: 'idle', lastRun: 'Never', runCount: 0, uptime: 100, category: 'Growth', description: 'Growth marketing and analytics agent' },
+      { id: 'sales', name: 'Sales Agent', displayName: 'Sales', status: 'idle', lastRun: 'Never', runCount: 0, uptime: 100, category: 'Sales', description: 'Sales pipeline and lead management agent' },
+      { id: 'ops', name: 'Ops Agent', displayName: 'Ops', status: 'idle', lastRun: 'Never', runCount: 0, uptime: 100, category: 'Operations', description: 'Operations and infrastructure monitoring agent' },
+      { id: 'founder', name: 'Founder Agent', displayName: 'Founder', status: 'idle', lastRun: 'Never', runCount: 0, uptime: 100, category: 'Executive', description: 'Executive briefing and decision support agent' },
     ];
-  },
-
-  getMockAgent(agentId: string): Agent {
-    return this.getMockAgents().find((a) => a.id === agentId) || {
-      id: agentId,
-      name: agentId,
-      status: 'not-configured',
-      lastRun: 'Never',
-      runCount: 0,
-      uptime: 0,
-      apiConfigured: false,
-    };
   },
 
   getMockLogs(agentId: string): AgentLog[] {
-    const levels: ('info' | 'warn' | 'error' | 'debug')[] = [
-      'info',
-      'info',
-      'info',
-      'warn',
-      'error',
-      'debug',
-    ];
-    
+    const levels: ('info' | 'warn' | 'error' | 'debug')[] = ['info', 'info', 'info', 'warn', 'error', 'debug'];
     return Array.from({ length: 20 }, (_, i) => ({
       id: `log-${i}`,
       agentId,
@@ -272,7 +192,6 @@ export const agentService = {
         'Error: Failed to connect to external API',
         'Debug: Parsing response data',
       ][i % 6],
-      data: i % 3 === 0 ? { taskId: `task-${i}`, duration: Math.random() * 1000 } : undefined,
     }));
   },
 };

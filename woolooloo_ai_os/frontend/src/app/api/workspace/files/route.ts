@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
-const WORKSPACE_ROOT = '/home/dustin/Dropbox/Woolooloo_OS';
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/app';
 
 async function safeReadDir(dirPath: string): Promise<any[]> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });

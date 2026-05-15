@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 
-const WORKSPACE_ROOT = '/home/dustin/Dropbox/Woolooloo_OS';
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/app';
 
 export async function POST(request: NextRequest) {
   try {

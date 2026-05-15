@@ -21,6 +21,7 @@ WORKDIR /app
 # Set environment variables
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV WORKSPACE_ROOT=/app
 
 # Install dependencies (only production)
 COPY package.json package-lock.json* ./

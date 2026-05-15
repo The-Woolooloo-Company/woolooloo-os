@@ -2,27 +2,57 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { logout } from "@/lib/auth";
 import { ThemeToggle } from "./theme-toggle";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: "dashboard" },
   { href: "/clients", label: "Clients", icon: "groups" },
-  { href: "/tasks", label: "Tasks", icon: "checklist" },
-  { href: "/time-tracking", label: "Time", icon: "schedule" },
-  { href: "/agents", label: "Agents", icon: "smart_toy" },
   { href: "/workspace", label: "Workspace", icon: "workspace_premium" },
+  { href: "/agents", label: "Agents", icon: "smart_toy" },
   { href: "/reports", label: "Reports", icon: "assessment" },
-  { href: "/staff", label: "Staff", icon: "badge" },
-  { href: "/wiki", label: "Wiki", icon: "auto_stories" },
-  { href: "/config", label: "Config", icon: "settings" },
+];
+
+interface DropdownItem {
+  href: string;
+  label: string;
+  icon: string;
+  description?: string;
+}
+
+const opsItems: DropdownItem[] = [
+  { href: "/tasks", label: "Tasks", icon: "checklist", description: "Linear tasks & backlog" },
+  { href: "/time-tracking", label: "Time Tracking", icon: "schedule", description: "Clockify entries" },
+  { href: "/staff", label: "Staff", icon: "badge", description: "Team directory" },
+];
+
+const moreItems: DropdownItem[] = [
+  { href: "/wiki", label: "Wiki", icon: "auto_stories", description: "Knowledge base" },
+  { href: "/config", label: "Config", icon: "settings", description: "System settings" },
+  { href: "/audit", label: "Audit", icon: "receipt_long", description: "Activity audit log" },
+  { href: "/leads", label: "Leads", icon: "person_add", description: "Lead pipeline" },
+  { href: "/campaigns", label: "Campaigns", icon: "campaign", description: "Marketing campaigns" },
 ];
 
 export function Navbar() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const opsRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (opsRef.current && !opsRef.current.contains(e.target as Node)) setOpsOpen(false);
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   if (pathname === "/login") return null;
 
@@ -30,6 +60,8 @@ export function Navbar() {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   };
+
+  const isAnyActive = (items: DropdownItem[]) => items.some(i => isActive(i.href));
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-md-surface-container-low/80 backdrop-blur-md border-b border-md-outline-variant/50">
@@ -63,13 +95,97 @@ export function Navbar() {
                   `}
                   aria-current={active ? "page" : undefined}
                 >
-                  <span className="material-symbols-rounded text-20">
-                    {item.icon}
-                  </span>
+                  <span className="material-symbols-rounded text-20">{item.icon}</span>
                   <span className="hidden xl:inline">{item.label}</span>
                 </Link>
               );
             })}
+
+            {/* Ops dropdown */}
+            <div ref={opsRef} className="relative">
+              <button
+                onClick={() => { setOpsOpen(!opsOpen); setMoreOpen(false); }}
+                className={`
+                  flex items-center gap-2 rounded-full px-4 py-2 text-label-large font-medium
+                  transition-all duration-200 min-h-[48px]
+                  ${isAnyActive(opsItems)
+                    ? "bg-md-secondary-container text-md-on-secondary-container"
+                    : "text-md-on-surface hover:bg-md-on-surface/5"
+                  }
+                `}
+              >
+                <span className="material-symbols-rounded text-20">work_history</span>
+                <span className="hidden xl:inline">Ops</span>
+                <span className="material-symbols-rounded text-16">
+                  {opsOpen ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+              {opsOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-md-surface-container-high rounded-2xl shadow-md-3 overflow-hidden z-50 border border-md-outline-variant/30">
+                  {opsItems.map(item => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpsOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+                        isActive(item.href)
+                          ? "bg-md-secondary-container/50 text-md-on-secondary-container"
+                          : "text-md-on-surface hover:bg-md-on-surface/5"
+                      }`}
+                    >
+                      <span className="material-symbols-rounded text-20">{item.icon}</span>
+                      <div>
+                        <p className="text-label-large">{item.label}</p>
+                        {item.description && <p className="text-body-small text-md-on-surface-variant">{item.description}</p>}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* More dropdown */}
+            <div ref={moreRef} className="relative">
+              <button
+                onClick={() => { setMoreOpen(!moreOpen); setOpsOpen(false); }}
+                className={`
+                  flex items-center gap-2 rounded-full px-4 py-2 text-label-large font-medium
+                  transition-all duration-200 min-h-[48px]
+                  ${isAnyActive(moreItems)
+                    ? "bg-md-secondary-container text-md-on-secondary-container"
+                    : "text-md-on-surface hover:bg-md-on-surface/5"
+                  }
+                `}
+              >
+                <span className="material-symbols-rounded text-20">more_horiz</span>
+                <span className="hidden xl:inline">More</span>
+                <span className="material-symbols-rounded text-16">
+                  {moreOpen ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+              {moreOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-md-surface-container-high rounded-2xl shadow-md-3 overflow-hidden z-50 border border-md-outline-variant/30">
+                  {moreItems.map(item => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMoreOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+                        isActive(item.href)
+                          ? "bg-md-secondary-container/50 text-md-on-secondary-container"
+                          : "text-md-on-surface hover:bg-md-on-surface/5"
+                      }`}
+                    >
+                      <span className="material-symbols-rounded text-20">{item.icon}</span>
+                      <div>
+                        <p className="text-label-large">{item.label}</p>
+                        {item.description && <p className="text-body-small text-md-on-surface-variant">{item.description}</p>}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right section */}
@@ -144,9 +260,8 @@ export function Navbar() {
                     href={item.href}
                     onClick={() => setMenuOpen(false)}
                     className={`
-                      flex items-center gap-3 rounded-full px-4 py-3 text-label-large font-medium min-h-[48px]
+                      flex items-center gap-3 rounded-xl px-4 py-3 text-label-large font-medium min-h-[48px]
                       transition-all duration-200
-                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
                       ${active
                         ? "bg-md-secondary-container text-md-on-secondary-container"
                         : "text-md-on-surface hover:bg-md-on-surface/5"
@@ -154,9 +269,59 @@ export function Navbar() {
                     `}
                     aria-current={active ? "page" : undefined}
                   >
-                    <span className="material-symbols-rounded text-20">
-                      {item.icon}
-                    </span>
+                    <span className="material-symbols-rounded text-20">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+
+              {/* Mobile Ops section */}
+              <div className="pt-3 pb-1">
+                <p className="text-label-small text-md-on-surface-variant px-4">Operations</p>
+              </div>
+              {opsItems.map((item) => {
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMenuOpen(false)}
+                    className={`
+                      flex items-center gap-3 rounded-xl px-4 py-3 text-label-large min-h-[48px]
+                      transition-all duration-200
+                      ${active
+                        ? "bg-md-secondary-container text-md-on-secondary-container"
+                        : "text-md-on-surface hover:bg-md-on-surface/5"
+                      }
+                    `}
+                  >
+                    <span className="material-symbols-rounded text-20">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+
+              {/* Mobile More section */}
+              <div className="pt-3 pb-1">
+                <p className="text-label-small text-md-on-surface-variant px-4">More</p>
+              </div>
+              {moreItems.map((item) => {
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMenuOpen(false)}
+                    className={`
+                      flex items-center gap-3 rounded-xl px-4 py-3 text-label-large min-h-[48px]
+                      transition-all duration-200
+                      ${active
+                        ? "bg-md-secondary-container text-md-on-secondary-container"
+                        : "text-md-on-surface hover:bg-md-on-surface/5"
+                      }
+                    `}
+                  >
+                    <span className="material-symbols-rounded text-20">{item.icon}</span>
                     {item.label}
                   </Link>
                 );

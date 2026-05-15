@@ -6,10 +6,6 @@ import { NextRequest, NextResponse } from 'next/server';
 const AGENTS = ['product', 'dev', 'growth', 'sales', 'ops', 'founder'];
 const logs = new Map<string, Array<{ id: string; agentId: string; timestamp: string; level: string; message: string; data?: any }>>();
 
-function getLogs(agentId: string) {
-  return logs.get(agentId) || [];
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ agentId: string }> }
@@ -22,7 +18,7 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const limit = parseInt(searchParams.get('limit') || '100');
 
-  const agentLogs = getLogs(agentId).slice(0, limit);
+  const agentLogs = (logs.get(agentId) || []).slice(0, limit);
   return NextResponse.json({ logs: agentLogs });
 }
 
@@ -37,17 +33,4 @@ export async function DELETE(
 
   logs.set(agentId, []);
   return NextResponse.json({ success: true, message: 'Logs cleared' });
-}
-
-// Export for other routes to use
-export function addLog(agentId: string, level: string, message: string, data?: any) {
-  if (!logs.has(agentId)) logs.set(agentId, []);
-  logs.get(agentId)!.unshift({
-    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    agentId,
-    timestamp: new Date().toISOString(),
-    level,
-    message,
-    data,
-  });
 }

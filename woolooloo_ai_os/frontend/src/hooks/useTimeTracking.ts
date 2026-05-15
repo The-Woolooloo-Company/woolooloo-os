@@ -1,13 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ClockifyUser,
   ClockifyProject,
   ClockifyTimeEntry,
-  getUsers,
-  getProjects,
-  getTimeEntries,
 } from '@/lib/clockify';
 import { startOfMonth } from 'date-fns';
 import { Client, getClients, seedMockClients } from '@/lib/clients';
@@ -32,13 +29,20 @@ interface UseTimeTrackingReturn {
     byUser: Map<string, { hours: number; amount: number }>;
   };
   loading: boolean;
+  syncing: boolean;
   error: string | null;
-  isClockifyConfigured: boolean;
+  lastSynced: Date | null;
   setDateRange: (range: DateRange) => void;
   setSelectedClientId: (id: string | null) => void;
   setSelectedUserId: (id: string | null) => void;
   setSelectedProjectId: (id: string | null) => void;
   syncData: () => Promise<void>;
+}
+
+const AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+function formatDateParam(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 export function useTimeTracking(): UseTimeTrackingReturn {
@@ -54,45 +58,74 @@ export function useTimeTracking(): UseTimeTrackingReturn {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isClockifyConfigured, setIsClockifyConfigured] = useState(false);
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Fetch all Clockify data through the server proxy (users + projects + time entries)
+  const fetchAllClockify = useCallback(async (forceSync = false) => {
+    const start = formatDateParam(dateRange.start);
+    const end = formatDateParam(dateRange.end);
+    const syncParam = forceSync ? '&sync=true' : '';
+    const url = `/api/clockify?type=all&start=${start}&end=${end}${syncParam}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Clockify proxy error: ${res.status} ${res.statusText}`);
+    }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    setUsers(data.users || []);
+    setProjects(data.projects || []);
+    setEntries(data.timeEntries || []);
+    setLastSynced(new Date());
+  }, [dateRange]);
 
   const fetchClients = useCallback(async () => {
     seedMockClients();
     setClients(getClients());
   }, []);
 
-  const fetchClockifyMeta = useCallback(async () => {
+  const syncData = useCallback(async () => {
+    setSyncing(true);
+    setError(null);
     try {
-      const [usersData, projectsData] = await Promise.all([getUsers(), getProjects()]);
-      setUsers(usersData);
-      setProjects(projectsData);
-      setIsClockifyConfigured(true);
+      await fetchAllClockify(true);
     } catch (err) {
-      console.warn('[Clockify] Failed to fetch metadata:', err);
-      setUsers([]);
-      setProjects([]);
-      setIsClockifyConfigured(false);
+      setError(err instanceof Error ? err.message : 'Failed to sync Clockify data');
+    } finally {
+      setSyncing(false);
     }
-  }, []);
+  }, [fetchAllClockify]);
 
-  const fetchTimeEntries = useCallback(async () => {
-    try {
+  // Initial load
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
       setError(null);
-      if (!isClockifyConfigured) return;
+      try {
+        await Promise.all([fetchClients(), fetchAllClockify()]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load Clockify data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [fetchClients, fetchAllClockify]);
 
-      const formatted = {
-        start: dateRange.start.toISOString().split('T')[0],
-        end: dateRange.end.toISOString().split('T')[0],
-      };
-
-      const data = await getTimeEntries(formatted);
-      setEntries(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch time entries';
-      setError(message);
-    }
-  }, [isClockifyConfigured, dateRange]);
+  // Auto-sync every 5 minutes
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      fetchAllClockify();
+    }, AUTO_SYNC_INTERVAL);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchAllClockify]);
 
   // Filter by client (map client ID to Clockify project IDs)
   const filteredByClient = useMemo(() => {
@@ -138,29 +171,6 @@ export function useTimeTracking(): UseTimeTrackingReturn {
     return { totalHours, totalAmount, byUser };
   }, [finalEntries]);
 
-  const syncData = async () => {
-    setLoading(true);
-    try {
-      await Promise.all([fetchClockifyMeta(), fetchTimeEntries()]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await fetchClients();
-      await fetchClockifyMeta();
-      setLoading(false);
-    };
-    init();
-  }, [fetchClients, fetchClockifyMeta]);
-
-  useEffect(() => {
-    fetchTimeEntries();
-  }, [fetchTimeEntries]);
-
   useEffect(() => {
     if (selectedClientId) setSelectedProjectId(null);
   }, [selectedClientId]);
@@ -176,8 +186,9 @@ export function useTimeTracking(): UseTimeTrackingReturn {
     selectedProjectId,
     totals: calculateTotals(),
     loading,
+    syncing,
     error,
-    isClockifyConfigured,
+    lastSynced,
     setDateRange,
     setSelectedClientId,
     setSelectedUserId,
@@ -199,6 +210,6 @@ export function getDateRangePresets(): { label: string; getRange: () => DateRang
   return [
     { label: 'This Month', getRange: () => ({ start: thisMonthStart, end: today }) },
     { label: 'Last Month', getRange: () => ({ start: lastMonthStart, end: lastMonthEnd }) },
-    { label: 'This Week', getRange: () => ({ start: thisWeekStart, end: today }) },
+    { label: 'This Week', getRange: () => ({ start: thisWeekStart, end: thisWeekEnd }) },
   ];
 }

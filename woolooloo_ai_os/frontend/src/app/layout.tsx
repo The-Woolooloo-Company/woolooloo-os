@@ -24,6 +24,23 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
+        {/* Apply theme synchronously to prevent flash of wrong theme */}
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              var theme = localStorage.getItem('woolooloo-theme') || 'system';
+              var resolved;
+              if (theme === 'system') {
+                resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+              } else {
+                resolved = theme;
+              }
+              if (resolved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+              }
+            })();
+          `
+        }} />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"

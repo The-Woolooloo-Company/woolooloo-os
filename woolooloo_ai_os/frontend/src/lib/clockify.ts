@@ -17,11 +17,17 @@ async function resolveWorkspaceId(): Promise<string | undefined> {
     _workspaceCache.apiKey = currentKey;
   }
   if (_workspaceCache.value) return _workspaceCache.value;
+
+  // Try env var / localStorage first - strip quotes if present
   const stored = getConfig().CLOCKIFY_WORKSPACE_ID;
-  if (stored && stored.length === 24 && /^[0-9a-f]+$/.test(stored)) {
-    _workspaceCache.value = stored;
-    return stored;
+  if (stored) {
+    const cleaned = stored.replace(/["']/g, '');
+    if (cleaned.length === 24 && /^[0-9a-f]+$/.test(cleaned)) {
+      _workspaceCache.value = cleaned;
+      return cleaned;
+    }
   }
+
   if (_workspaceCache.pending) return _workspaceCache.pending;
   _workspaceCache.pending = (async () => {
     try {
@@ -32,8 +38,6 @@ async function resolveWorkspaceId(): Promise<string | undefined> {
         const data = await res.json();
         const ws = data.activeWorkspace || data.defaultWorkspace || data.workspace;
         if (ws) {
-          const cfg = getConfig();
-          localStorage.setItem('woolooloo-config', JSON.stringify({ ...cfg, CLOCKIFY_WORKSPACE_ID: ws }));
           _workspaceCache.value = ws;
           return ws;
         }
@@ -45,6 +49,15 @@ async function resolveWorkspaceId(): Promise<string | undefined> {
 }
 
 // --- Types ---
+
+export interface LinearMatchedTask {
+  id: string;
+  title: string;
+  identifier: string;
+  state: { id: string; name: string; type: 'unstarted' | 'started' | 'completed' };
+  priority: number;
+  score: number;
+}
 
 export interface ClockifyTimeEntry {
   id: string;
@@ -60,6 +73,7 @@ export interface ClockifyTimeEntry {
   billable: boolean;
   billableRate: number;      // hourly rate in workspace currency
   billableAmount: number;    // calculated: hours * rate
+  matchedLinearTask?: LinearMatchedTask;
 }
 
 export interface ClockifyUser {
@@ -92,19 +106,21 @@ export async function getUsers(): Promise<ClockifyUser[]> {
   const apiKey = getClockifyKey();
   if (!apiKey) throw new Error('Clockify not configured');
 
-  const res = await fetch(`${CLOCKIFY_API_URL}/workspaces`, { headers: { 'x-api-key': apiKey! } });
-  if (!res.ok) throw new Error('Failed to fetch workspaces');
-  const workspaces = await res.json();
-  const ws = workspaces.find((w: any) => w.id === workspaceId);
-  if (!ws || !ws.memberships) return [];
+  // /workspaces/{ws}/users returns array of user objects (id = userId)
+  const res = await fetch(`${CLOCKIFY_API_URL}/workspaces/${workspaceId}/users`, {
+    headers: { 'x-api-key': apiKey },
+  });
+  if (!res.ok) throw new Error('Failed to fetch workspace users');
+  const users = await res.json();
+  if (!Array.isArray(users)) return [];
 
-  return ws.memberships.map((m: any) => ({
-    id: m.userId,
-    userId: m.userId,
-    userName: m.userName || m.userEmail?.split('@')[0] || 'Unknown',
-    userEmail: m.userEmail || '',
-    billableRate: m.hourlyRate?.amount || 0,
-    membershipStatus: m.membershipStatus || 'UNKNOWN',
+  return users.map((u: any) => ({
+    id: u.id,
+    userId: u.id,
+    userName: u.name || u.email?.split('@')[0] || 'Unknown',
+    userEmail: u.email || '',
+    billableRate: u.hourlyRate?.amount || 0,
+    membershipStatus: u.status || 'UNKNOWN',
   }));
 }
 
@@ -194,8 +210,8 @@ export async function getTimeEntries(params: {
       const url = new URL(`${CLOCKIFY_API_URL}/workspaces/${workspaceId}/user/${userId}/time-entries`);
       url.searchParams.set('page', String(page));
       url.searchParams.set('page-size', String(pageSize));
-      if (params.start) url.searchParams.set('start', params.start);
-      if (params.end) url.searchParams.set('end', params.end);
+      if (params.start) url.searchParams.set('dateFrom', params.start);
+      if (params.end) url.searchParams.set('dateTo', params.end);
 
       const res = await fetch(url.toString(), { headers: { 'x-api-key': apiKey } });
       if (!res.ok) break;
@@ -211,7 +227,9 @@ export async function getTimeEntries(params: {
         const projectId = raw.projectId || '';
         const projectName = projectMap.get(projectId) || raw.project?.name || 'No project';
         const userInfo = userMap.get(raw.userId) || { name: 'Unknown', email: '', rate: 0 };
-        const billableAmount = raw.billable ? (dur / 3600) * userInfo.rate : 0;
+        // Use entry-level hourly rate if available, otherwise fall back to user's workspace rate
+        const entryRate = raw.hourlyRate?.amount || userInfo.rate;
+        const billableAmount = raw.billable ? (dur / 3600) * entryRate : 0;
 
         allEntries.push({
           id: raw.id || '',

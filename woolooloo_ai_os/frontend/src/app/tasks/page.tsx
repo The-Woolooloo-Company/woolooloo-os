@@ -9,12 +9,32 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTasks } from "@/hooks/useTasks";
+import { useToast } from "@/components/toast";
+import { getConfig } from "@/lib/config-store";
 
 export default function TasksPage() {
-  const { tasks, loading, clients, projects } = useTasks();
+  const { tasks, loading, clients, projects, syncProjects, isLinearConfigured } = useTasks();
+  const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"date" | "priority" | "project">("date");
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!isLinearConfigured) {
+      showToast("Linear not configured. Set LINEAR_API_KEY in Config.", "error");
+      return;
+    }
+    setSyncing(true);
+    try {
+      await syncProjects();
+      showToast(`Synced ${tasks.length} tasks from Linear`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Sync failed", "error");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     let result = tasks;
@@ -126,7 +146,20 @@ export default function TasksPage() {
         {/* Task List */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{filtered.length} Tasks</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>{filtered.length} Tasks</CardTitle>
+              {isLinearConfigured && (
+                <Button
+                  variant="tonal"
+                  size="sm"
+                  onClick={handleSync}
+                  disabled={syncing}
+                >
+                  <span className={`material-symbols-rounded text-18 mr-1 ${syncing ? 'animate-spin' : ''}`}>sync</span>
+                  {syncing ? 'Syncing...' : 'Sync Linear'}
+                </Button>
+              )}
+            </div>
             <Link href="/tasks/new">
               <Button variant="filled">
                 <span className="material-symbols-rounded text-20 mr-2">add</span>

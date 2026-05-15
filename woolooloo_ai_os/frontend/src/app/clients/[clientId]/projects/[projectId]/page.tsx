@@ -11,10 +11,10 @@ import { useToast } from "@/components/toast";
 import { AgentDispatchModal } from "@/components/agent-dispatch-modal";
 import { getClientById, ClientProject } from "@/lib/clients";
 import { useExternalProjects } from "@/hooks/useExternalProjects";
-import { getPriorityLabel, getPriorityColor, getStatusColor, LinearTask } from "@/lib/linear";
+import { getPriorityLabel, getPriorityColor, getStatusColor, LinearTask, getTasks } from "@/lib/linear";
 import { formatDuration } from "@/lib/clockify";
 
-type TabId = "tasks" | "time" | "people";
+type TabId = "tasks" | "time" | "people" | "activity";
 
 export default function ProjectDetailPage() {
   const { clientId, projectId } = useParams();
@@ -25,8 +25,14 @@ export default function ProjectDetailPage() {
   const [showAgentDispatch, setShowAgentDispatch] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("tasks");
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>("");
 
   const { linearTasks, clockifyEntries } = useExternalProjects();
+
+  // Local task cache for sync tracking
+  const [localTasks, setLocalTasks] = useState<LinearTask[]>([]);
+  const [localEntries, setLocalEntries] = useState<any[]>([]);
 
   useEffect(() => {
     if (!clientId || !projectId) return;
@@ -107,6 +113,69 @@ export default function ProjectDetailPage() {
     ? Math.round((completedTasks.length / projectTasks.length) * 100)
     : 0;
 
+  // Sync handler - fetch from proxy API
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const params = new URLSearchParams({ type: 'all' });
+      const now = new Date();
+      params.set('start', new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
+      params.set('end', new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+
+      const [clockRes, linearRes] = await Promise.all([
+        fetch(`/api/clockify?${params}`),
+        project?.linearProjectId ? getTasks({ projectId: project.linearProjectId }) : getTasks(),
+      ]);
+
+      const clockData = await clockRes.json();
+      const entries = (clockData.timeEntries || []).filter((e: any) =>
+        e.projectId === project?.clockifyProjectId
+      );
+
+      setLocalTasks(linearRes);
+      setLocalEntries(entries);
+      setLastSyncTime(new Date().toLocaleTimeString());
+      showToast(`Synced ${linearRes.length} tasks & ${entries.length} time entries`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Sync failed", "error");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Use local sync data or global data
+  const displayTasks = localTasks.length ? localTasks : projectTasks;
+  const displayEntries = localEntries.length ? localEntries : projectEntries;
+
+  // Activity log: merge task events + time entries chronologically
+  const activityLog = useMemo(() => {
+    const items: Array<{
+      type: 'task' | 'time';
+      date: Date;
+      task?: LinearTask;
+      entry?: any;
+    }> = [];
+
+    displayTasks.forEach((t: LinearTask) => {
+      items.push({
+        type: 'task',
+        date: new Date(Math.max(new Date(t.createdAt).getTime(), new Date(t.updatedAt).getTime())),
+        task: t,
+      });
+    });
+
+    displayEntries.forEach((e: any) => {
+      items.push({
+        type: 'time',
+        date: new Date(e.start),
+        entry: e,
+      });
+    });
+
+    items.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return items;
+  }, [displayTasks, displayEntries]);
+
   if (!client || !project || loading) {
     return (
       <div className="min-h-screen bg-md-surface flex items-center justify-center">
@@ -119,6 +188,8 @@ export default function ProjectDetailPage() {
     { id: "tasks", label: "Tasks", icon: "checklist", count: projectTasks.length },
     { id: "time", label: "Time", icon: "schedule", count: projectEntries.length },
     { id: "people", label: "People", icon: "diversity_3", count: assignees.length + timeUsers.length },
+    { id: "activity", label: "Activity", icon: "timeline", count: activityLog.length },
+    { id: "activity", label: "Activity", icon: "timeline", count: activityLog.length },
   ];
 
   return (
@@ -146,10 +217,19 @@ export default function ProjectDetailPage() {
               <p className="text-body-large text-md-on-surface-variant">{project.description || `${client.name} project`}</p>
             </div>
           </div>
-          <Button variant="tonal" onClick={() => setShowAgentDispatch(true)}>
-            <span className="material-symbols-rounded text-18 mr-1">smart_toy</span>
-            @Agent
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="tonal" onClick={handleSync} disabled={syncing}>
+              <span className={`material-symbols-rounded text-18 mr-1 ${syncing ? 'animate-spin' : ''}`}>sync</span>
+              {syncing ? 'Syncing...' : 'Sync'}
+            </Button>
+            {lastSyncTime && (
+              <span className="text-body-small text-md-on-surface-variant self-center">{lastSyncTime}</span>
+            )}
+            <Button variant="tonal" onClick={() => setShowAgentDispatch(true)}>
+              <span className="material-symbols-rounded text-18 mr-1">smart_toy</span>
+              @Agent
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -330,6 +410,31 @@ export default function ProjectDetailPage() {
               </>
             )}
 
+            {/* Activity Tab */}
+            {activeTab === "activity" && (
+              <div>
+                {activityLog.length === 0 ? (
+                  <div className="text-center py-16">
+                    <span className="material-symbols-rounded text-64 text-md-on-surface-variant/30 block mb-4">timeline</span>
+                    <p className="text-body-large text-md-on-surface-variant">No activity logged yet</p>
+                    <p className="text-body-small text-md-on-surface-variant mt-1">Task updates and time entries appear here</p>
+                  </div>
+                ) : (
+                  <div className="p-6">
+                    <div className="relative">
+                      {/* Vertical timeline line */}
+                      <div className="absolute left-[19px] top-4 bottom-4 w-px bg-md-outline-variant/50" />
+                      <div className="space-y-2">
+                        {activityLog.map((item, idx) => (
+                          <ActivityItem key={`${item.type}-${idx}`} item={item} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* People Tab */}
             {activeTab === "people" && (
               <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-md-outline-variant/50">
@@ -462,5 +567,45 @@ function TaskRow({ task }: { task: LinearTask }) {
         </a>
       </td>
     </tr>
+  );
+}
+
+function ActivityItem({ item }: { item: { type: "task" | "time"; date: Date; task?: LinearTask; entry?: any } }) {
+  const isTask = item.type === "task";
+  const timeStr = item.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateStr = item.date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  return (
+    <div className="flex items-start gap-3 relative">
+      {/* Timeline dot */}
+      <div className={`relative z-10 flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center ${
+        isTask ? "bg-md-primary/10 text-md-primary" : "bg-md-tertiary/10 text-md-tertiary"
+      }`}>
+        <span className="material-symbols-rounded text-20">{isTask ? "check" : "schedule"}</span>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 pt-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isTask && item.task && (
+            <>
+              <Badge variant="primary-tonal">Linear</Badge>
+              <span className="text-body-medium text-md-primary font-medium">{item.task.projectKey}</span>
+              <span className="text-body-medium text-md-on-surface">{item.task.title}</span>
+            </>
+          )}
+          {item.type === "time" && item.entry && (
+            <>
+              <Badge variant="tertiary-tonal">Time</Badge>
+              <span className="text-body-medium text-md-on-surface">{item.entry.description || "Time entry"}</span>
+              <span className="text-body-small text-md-on-surface-variant">by {item.entry.userName}</span>
+            </>
+          )}
+        </div>
+        <p className="text-body-small text-md-on-surface-variant mt-0.5">
+          {dateStr} at {timeStr}
+        </p>
+      </div>
+    </div>
   );
 }

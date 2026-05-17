@@ -157,7 +157,7 @@ export default function AgentsPage() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center py-12">
-                    <span className="material-symbols-rounded text-64 text-md-on-surface-variant/30">smart_toy</span>
+                    <span className="material-symbols-rounded text-64 text-md-on-surface-variant/30">psychology</span>
                     <p className="text-body-large text-md-on-surface-variant mt-4">Select an agent to view details</p>
                     <p className="text-body-medium text-md-on-surface-variant/60 mt-2">
                       Click any agent card above to see logs, run history, and execute prompts.

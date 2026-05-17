@@ -148,7 +148,7 @@ export default function ClientProjectsPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="tonal" onClick={() => setShowAgentDispatch(true)}>
-              <span className="material-symbols-rounded text-18 mr-1">smart_toy</span>
+              <span className="material-symbols-rounded text-18 mr-1">psychology</span>
               @Agent
             </Button>
             <Button variant="filled" onClick={() => setShowProjectModal(true)}>

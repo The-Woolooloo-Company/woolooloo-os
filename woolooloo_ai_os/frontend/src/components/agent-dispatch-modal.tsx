@@ -71,7 +71,7 @@ export function AgentDispatchModal({ projects, onClose, onDispatch }: AgentDispa
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <span className="material-symbols-rounded text-28">smart_toy</span>
+            <span className="material-symbols-rounded text-28">psychology</span>
             Dispatch Agent
           </CardTitle>
         </CardHeader>

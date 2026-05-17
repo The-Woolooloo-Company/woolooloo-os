@@ -42,7 +42,7 @@ export default function AuditPage() {
   useEffect(() => { setLoading(false); }, []);
 
   const typeIcon = (type: string) => {
-    switch (type) { case 'agent': return 'smart_toy'; case 'review': return 'assignment'; case 'task': return 'checklist'; case 'time': return 'schedule'; default: return 'activity_zone'; }
+    switch (type) { case 'agent': return 'psychology'; case 'review': return 'assignment'; case 'task': return 'checklist'; case 'time': return 'schedule'; default: return 'activity_zone'; }
   };
 
   const sevBadge: Record<string, string> = {
@@ -73,7 +73,7 @@ export default function AuditPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard icon="activity_zone" label="Total Events" value={allEntries.length.toString()} color="primary" />
-          <StatCard icon="smart_toy" label="Dispatches" value={allEntries.filter(e => e.type === 'agent').length.toString()} color="success" />
+          <StatCard icon="psychology" label="Dispatches" value={allEntries.filter(e => e.type === 'agent').length.toString()} color="success" />
           <StatCard icon="assignment" label="Reviews" value={allEntries.filter(e => e.type === 'review').length.toString()} color="tertiary" />
           <StatCard icon="hourglass_top" label="Pending" value={allEntries.filter(e => e.severity === 'warning' || e.severity === 'info').length.toString()} color="error" />
         </div>

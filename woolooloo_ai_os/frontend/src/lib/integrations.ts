@@ -119,7 +119,7 @@ export const integrations: IntegrationDefinition[] = [
   {
     name: "vLLM",
     description: "Local LLM inference (Qwen3.5-27B)",
-    icon: "smart_toy",
+    icon: "psychology",
     fields: [
       { key: "VLLM_HOST", label: "Host URL", type: "text" },
       { key: "VLLM_MODEL", label: "Model", type: "text" },

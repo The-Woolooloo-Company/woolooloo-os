@@ -31,7 +31,7 @@ export function RecentActivity() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="secondary-tonal" >
-                    <span className="material-symbols-rounded mr-1 text-xs">smart_toy</span>
+                    <span className="material-symbols-rounded mr-1 text-xs">psychology</span>
                     {activity.agent}
                   </Badge>
                   <span className="text-xs text-muted-foreground">{activity.time}</span>

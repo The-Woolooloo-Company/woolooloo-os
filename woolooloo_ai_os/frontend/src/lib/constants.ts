@@ -118,7 +118,7 @@ export const INTEGRATION_ICONS: Record<string, string> = {
   linkedin: 'language',
   'google-ads': 'ads_click',
   xero: 'account_balance',
-  vllm: 'smart_toy',
+  vllm: 'psychology',
 };
 
 export function getIntegrationIcon(type: string): string {

@@ -101,7 +101,7 @@ Responsibilities:
 
 Provide code snippets, architecture diagrams in text, and concrete implementation steps.`,
     quickActions: [
-      { label: 'Code review', prompt: 'Review the codebase structure and identify code quality issues or architectural improvements.', icon: 'inspect' },
+      { label: 'Code review', prompt: 'Review the codebase structure and identify code quality issues or architectural improvements.', icon: 'rule' },
       { label: 'Debug', prompt: 'Analyze the current codebase for potential bugs or edge cases that need fixing.', icon: 'bug_report' },
       { label: 'Architecture', prompt: 'Design the architecture for real-time collaboration features.', icon: 'architecture' },
     ],
@@ -171,7 +171,7 @@ Provide executive-level summaries with data-backed recommendations and clear nex
     quickActions: [
       { label: 'Weekly briefing', prompt: 'Prepare a weekly executive briefing covering all active projects, key metrics, and critical decisions needed.', icon: 'article' },
       { label: 'Financial review', prompt: 'Review current revenue, costs, and project profitability. Summarize key financial metrics.', icon: 'account_balance' },
-      { label: 'Strategy', prompt: 'Assess our current product strategy and suggest strategic pivots or optimizations.', icon: 'strategic_partner' },
+      { label: 'Strategy', prompt: 'Assess our current product strategy and suggest strategic pivots or optimizations.', icon: 'groups' },
     ],
   },
 ];

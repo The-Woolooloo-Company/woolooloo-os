@@ -10,7 +10,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: "dashboard" },
   { href: "/clients", label: "Clients", icon: "groups" },
   { href: "/workspace", label: "Workspace", icon: "workspace_premium" },
-  { href: "/agents", label: "Agents", icon: "smart_toy" },
+  { href: "/agents", label: "Agents", icon: "psychology" },
   { href: "/reports", label: "Reports", icon: "assessment" },
 ];
 

@@ -256,7 +256,7 @@ export default function ProjectDetailPage() {
             </Button>
             {lastSyncTime && <span className="text-body-small text-md-on-surface-variant self-center">{lastSyncTime}</span>}
             <Button variant="tonal" onClick={() => setShowAgentDispatch(true)}>
-              <span className="material-symbols-rounded text-18 mr-1">smart_toy</span>
+              <span className="material-symbols-rounded text-18 mr-1">psychology</span>
               @Agent
             </Button>
           </div>

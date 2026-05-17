@@ -144,7 +144,7 @@ export function AgentDetail({ agent, onRefresh }: Props) {
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               placeholder={`Ask the ${agent.displayName} agent...`}
-              startIcon={<span className="material-symbols-rounded text-20">smart_toy</span>}
+              startIcon={<span className="material-symbols-rounded text-20">psychology</span>}
             />
           </div>
 

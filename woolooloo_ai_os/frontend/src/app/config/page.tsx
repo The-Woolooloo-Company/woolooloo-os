@@ -112,7 +112,7 @@ export default function ConfigPage() {
 
   const sections = [
     { id: "integrations" as const, label: "Integrations", icon: "link" },
-    { id: "agents" as const, label: "Agents", icon: "smart_toy" },
+    { id: "agents" as const, label: "Agents", icon: "psychology" },
     { id: "appearance" as const, label: "Appearance", icon: "palette" },
   ];
 

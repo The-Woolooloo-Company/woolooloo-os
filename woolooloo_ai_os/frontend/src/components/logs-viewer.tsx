@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { AgentLog } from "@/lib/agents";
+import { AgentLog } from "@/lib/agent-state";
 import { cn } from "@/lib/utils";
 
 interface LogsViewerProps {

@@ -18,8 +18,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Block dangerous commands
-    const blocked = ['rm -rf /', 'mkfs', 'dd if=', ':(){:|:;}', 'curl.*|.*bash', 'wget.*|.*sh'];
-    if (blocked.some(b => command.toLowerCase().includes(b.toLowerCase()))) {
+    const blockedPatterns = [
+      'rm -rf /', 'mkfs', 'dd if=', ':{(){:|:;}', 'curl.*|.*bash', 'wget.*|.*sh',
+      'format', 'fdisk', 'parted', 'dd of=', 'chmod -R 777 /',
+    ];
+    if (blockedPatterns.some(p => command.toLowerCase().includes(p.toLowerCase()))) {
       return NextResponse.json({ error: 'Command blocked for safety' }, { status: 403 });
     }
 
@@ -27,7 +30,11 @@ export async function POST(request: NextRequest) {
     const enc = new TextEncoder();
     const child = spawn('sh', ['-c', command], {
       cwd,
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+      },
     });
 
     const stream = new ReadableStream({

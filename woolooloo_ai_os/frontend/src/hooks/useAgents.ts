@@ -1,96 +1,115 @@
 import { useState, useEffect, useCallback } from 'react';
-import { agentService, Agent, AgentLog } from '@/lib/agents';
+import type { AgentLog, AgentRun } from '@/lib/agent-state';
+
+export interface AgentInfo {
+  id: string;
+  name: string;
+  displayName: string;
+  category: string;
+  description: string;
+  icon: string;
+  quickActions: { label: string; prompt: string; icon: string }[];
+  status: string;
+  runCount: number;
+  lastRun: string;
+  lastError?: string;
+  logs: AgentLog[];
+  recentRuns: AgentRun[];
+  apiConfigured: boolean;
+}
 
 export function useAgents() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [logs, setLogs] = useState<AgentLog[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
+  const [vllmConfigured, setVllmConfigured] = useState(false);
 
   const fetchAgents = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await agentService.getAgents();
-      setAgents(data);
+      const res = await fetch('/api/agents');
+      const data = await res.json();
+      setAgents(data.agents || []);
+      setVllmConfigured(data.vllmConfigured || false);
       setError(null);
     } catch (err) {
+      console.error('Failed to fetch agents:', err);
       setError('Failed to fetch agents');
-      console.error(err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchLogs = useCallback(async (agentId: string) => {
+  const runAgent = useCallback(async (agentId: string, prompt: string) => {
     try {
-      setLogsLoading(true);
-      const data = await agentService.getAgentLogs(agentId);
-      setLogs(data);
-    } catch (err) {
-      console.error('Failed to fetch logs:', err);
-    } finally {
-      setLogsLoading(false);
-    }
-  }, []);
-
-  const startAgent = useCallback(async (agentId: string, prompt?: string) => {
-    try {
-      const result = await agentService.runAgent(agentId, prompt || 'Analyze the current state.');
+      const res = await fetch(`/api/agents/${agentId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
       await fetchAgents();
-      return result;
-    } catch (err) {
-      console.error('Failed to start agent:', err);
-      return { success: false, message: 'Failed to run agent' };
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to run agent' };
     }
   }, [fetchAgents]);
 
-  const stopAgent = useCallback(async (agentId: string) => {
-    const result = await agentService.stopAgent(agentId);
-    await fetchAgents();
-    return result;
+  const createLinearTasks = useCallback(async (agentId: string, agentOutput: string) => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentOutput }),
+      });
+      const data = await res.json();
+      await fetchAgents();
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to create tasks' };
+    }
   }, [fetchAgents]);
 
-  const restartAgent = useCallback(async (agentId: string) => {
-    const result = await agentService.restartAgent(agentId);
-    await fetchAgents();
-    return result;
+  const collaborate = useCallback(async (prompt: string, chain: string[] = ['product', 'dev', 'ops']) => {
+    try {
+      const res = await fetch('/api/agents/collaborate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, chain }),
+      });
+      const data = await res.json();
+      await fetchAgents();
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Collaboration failed' };
+    }
   }, [fetchAgents]);
 
   const clearLogs = useCallback(async (agentId: string) => {
-    const success = await agentService.clearAgentLogs(agentId);
-    if (success) {
-      setLogs([]);
+    try {
+      await fetch(`/api/agents/${agentId}/logs`, { method: 'DELETE' });
+      await fetchAgents();
+      return true;
+    } catch {
+      return false;
     }
-    return success;
-  }, []);
-
-  useEffect(() => {
-    fetchAgents();
-    const interval = setInterval(fetchAgents, 30000);
-    return () => clearInterval(interval);
   }, [fetchAgents]);
 
   useEffect(() => {
-    if (selectedAgent) {
-      fetchLogs(selectedAgent);
-    }
-  }, [selectedAgent, fetchLogs]);
+    fetchAgents();
+    const interval = setInterval(fetchAgents, 5000);
+    return () => clearInterval(interval);
+  }, [fetchAgents]);
 
   return {
     agents,
     loading,
     error,
-    selectedAgent,
-    setSelectedAgent,
-    logs,
-    logsLoading,
-    startAgent,
-    stopAgent,
-    restartAgent,
+    vllmConfigured,
+    runAgent,
+    createLinearTasks,
+    collaborate,
     clearLogs,
-    refreshAgents: fetchAgents,
-    refreshLogs: () => selectedAgent && fetchLogs(selectedAgent),
+    refresh: fetchAgents,
   };
 }

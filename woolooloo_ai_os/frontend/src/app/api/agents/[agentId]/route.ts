@@ -1,57 +1,58 @@
 // GET /api/agents/:agentId - Get agent details
-// POST /api/agents/:agentId - Start agent
-// DELETE /api/agents/:agentId - Stop agent
+// DELETE /api/agents/:agentId - Clear agent state
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { AGENT_DEFINITIONS, agentStore } from '@/lib/agent-state';
 
-const AGENTS = ['product', 'dev', 'growth', 'sales', 'ops', 'founder'];
+const VALID_IDS = AGENT_DEFINITIONS.map(a => a.id);
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ agentId: string }> }
 ) {
   const { agentId } = await params;
-  if (!AGENTS.includes(agentId)) {
+  if (!VALID_IDS.includes(agentId)) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const action = searchParams.get('action');
-
-  if (action === 'logs') {
-    const logsRes = await fetch(`${request.nextUrl.origin}/api/agents/${agentId}/logs`);
-    return logsRes.ok ? logsRes.json().then(data => NextResponse.json(data)) : NextResponse.json({ logs: [] });
-  }
+  const def = AGENT_DEFINITIONS.find(a => a.id === agentId)!;
+  const state = agentStore.get(agentId);
 
   return NextResponse.json({
-    agentId,
-    name: `${agentId.charAt(0).toUpperCase() + agentId.slice(1)} Agent`,
-    status: 'idle',
-    runCount: 0,
-    lastRun: 'Never',
+    def,
+    state: state || {
+      id: agentId,
+      name: def.name,
+      displayName: def.displayName,
+      status: 'idle' as const,
+      runCount: 0,
+      lastRun: 'Never',
+      logs: [],
+      runs: [],
+    },
   });
 }
 
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
-) {
-  const { agentId } = await params;
-  if (!AGENTS.includes(agentId)) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-  }
-
-  return NextResponse.json({ success: true, message: `Agent ${agentId} started` });
-}
-
 export async function DELETE(
-  _request: NextRequest,
+  _request: Request,
   { params }: { params: Promise<{ agentId: string }> }
 ) {
   const { agentId } = await params;
-  if (!AGENTS.includes(agentId)) {
+  if (!VALID_IDS.includes(agentId)) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true, message: `Agent ${agentId} stopped` });
+  const def = AGENT_DEFINITIONS.find(a => a.id === agentId)!;
+  agentStore.set(agentId, {
+    id: agentId,
+    name: def.name,
+    displayName: def.displayName,
+    status: 'idle',
+    runCount: 0,
+    lastRun: 'Never',
+    logs: [],
+    runs: [],
+  });
+
+  return NextResponse.json({ success: true, message: 'Agent state cleared' });
 }

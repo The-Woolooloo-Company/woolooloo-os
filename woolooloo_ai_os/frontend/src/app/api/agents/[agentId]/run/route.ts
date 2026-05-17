@@ -1,23 +1,16 @@
-// POST /api/agents/:agentId/run - Run an agent with a prompt using vLLM
+// POST /api/agents/:agentId/run — Run agent via vLLM, update state and logs
 
 import { NextRequest, NextResponse } from 'next/server';
+import { agentStore, AGENT_DEFINITIONS, addLog, recordRun, type AgentRun } from '@/lib/agent-state';
 
-const SYSTEM_PROMPTS: Record<string, string> = {
-  product: 'You are a product strategy expert. Analyze product requirements, user feedback, and market data to provide actionable product recommendations.',
-  dev: 'You are a senior software engineer. Review code, suggest improvements, and help with development tasks and architecture decisions.',
-  growth: 'You are a growth marketing expert. Analyze marketing data, suggest growth strategies, and provide recommendations for user acquisition and retention.',
-  sales: 'You are a sales operations expert. Help manage sales pipelines, optimize lead conversion, and provide sales strategy recommendations.',
-  ops: 'You are an operations and infrastructure expert. Monitor systems, analyze operational data, and provide infrastructure recommendations.',
-  founder: 'You are an executive assistant. Provide strategic briefings, summarize key metrics, and help with executive decision-making.',
-};
-
-const AGENTS = ['product', 'dev', 'growth', 'sales', 'ops', 'founder'];
+const VALID_IDS = AGENT_DEFINITIONS.map(a => a.id);
 
 function getVllmConfig() {
-  const host = process.env.NEXT_PUBLIC_VLLM_HOST || process.env.NEXT_PUBLIC_VLLM_HOST || '';
-  const model = process.env.NEXT_PUBLIC_VLLM_MODEL || '';
-  const apiKey = process.env.NEXT_PUBLIC_VLLM_API_KEY || '';
-  return { host, model, apiKey };
+  return {
+    host: process.env.NEXT_PUBLIC_VLLM_HOST || '',
+    model: process.env.NEXT_PUBLIC_VLLM_MODEL || '',
+    apiKey: process.env.NEXT_PUBLIC_VLLM_API_KEY || '',
+  };
 }
 
 export async function POST(
@@ -25,22 +18,46 @@ export async function POST(
   { params }: { params: Promise<{ agentId: string }> }
 ) {
   const { agentId } = await params;
-
-  if (!AGENTS.includes(agentId)) {
+  if (!VALID_IDS.includes(agentId)) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+  }
+
+  const def = AGENT_DEFINITIONS.find(a => a.id === agentId)!;
+  let state = agentStore.get(agentId);
+  if (!state) {
+    state = {
+      id: agentId, name: def.name, displayName: def.displayName,
+      status: 'idle', runCount: 0, lastRun: 'Never', logs: [], runs: [],
+    };
+    agentStore.set(agentId, state);
   }
 
   try {
     const body = await request.json();
-    const prompt = body.prompt || body.message || 'Analyze the current state of the project.';
+    const prompt = body.prompt || body.message || 'Analyze the current state.';
 
     const { host: vllmHost, model: vllmModel, apiKey: vllmKey } = getVllmConfig();
 
     if (!vllmHost || !vllmModel) {
-      return NextResponse.json({ error: 'vLLM not configured. Set NEXT_PUBLIC_VLLM_HOST and NEXT_PUBLIC_VLLM_MODEL in environment.' }, { status: 503 });
+      addLog(agentId, 'error', 'vLLM not configured');
+      return NextResponse.json({ error: 'vLLM not configured' }, { status: 503 });
     }
 
-    const systemPrompt = SYSTEM_PROMPTS[agentId] || SYSTEM_PROMPTS.dev;
+    // Mark running
+    state.status = 'running';
+    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = new Date().toISOString();
+
+    addLog(agentId, 'info', `Run started: "${prompt.slice(0, 80)}..."`, { runId });
+
+    // Context from recent activity
+    const recentLogs = state.logs.slice(0, 5).map(l => `[${l.level}] ${l.message}`).join('\n');
+    const contextPrompt = recentLogs
+      ? `Recent activity:\n${recentLogs}\n\n${prompt}`
+      : prompt;
+
+    // Call vLLM
+    addLog(agentId, 'debug', `Sending to vLLM (model: ${vllmModel})`);
 
     const response = await fetch(`${vllmHost}/v1/chat/completions`, {
       method: 'POST',
@@ -51,32 +68,53 @@ export async function POST(
       body: JSON.stringify({
         model: vllmModel,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt },
+          { role: 'system', content: def.systemPrompt },
+          { role: 'user', content: contextPrompt },
         ],
-        max_tokens: 2048,
+        max_tokens: 4096,
         temperature: 0.7,
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(120000),
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      return NextResponse.json({ error: `vLLM error (${response.status}): ${errText}` }, { status: 502 });
+      addLog(agentId, 'error', `vLLM error (${response.status}): ${errText.slice(0, 200)}`);
+      state.status = 'error';
+      state.lastError = errText.slice(0, 200);
+      return NextResponse.json({ error: `vLLM error: ${errText.slice(0, 200)}` }, { status: 502 });
     }
 
     const data = await response.json();
     const reply = data.choices?.[0]?.message?.content || 'No response from model.';
+    const tokenUsage = data.usage || {};
+
+    addLog(agentId, 'stream', `Response (${reply.length} chars, ${tokenUsage.total_tokens || '?'} tokens)`);
+
+    // Parse TASK: lines
+    const taskMatches = reply.match(/TASK:\s*\[Priority:\s*(P[0-3])\]\s*\[Project:\s*([^\]]+)\]\s*(.+?)(?=\nTASK:|\n\n|\n$)/gi);
+    if (taskMatches && taskMatches.length > 0) {
+      addLog(agentId, 'task', `Found ${taskMatches.length} task suggestion(s)`);
+    }
+
+    // Record the run
+    const run: AgentRun = {
+      id: runId, agentId, prompt, response: reply,
+      status: 'completed', startedAt, completedAt: new Date().toISOString(),
+    };
+    recordRun(agentId, run);
+    addLog(agentId, 'info', 'Run completed successfully');
 
     return NextResponse.json({
-      success: true,
-      reply,
-      agentId,
-      prompt,
-      timestamp: new Date().toISOString(),
+      success: true, reply, agentId, prompt, runId,
+      timestamp: new Date().toISOString(), tokenUsage,
+      tasksSuggested: taskMatches?.length || 0,
     });
   } catch (err: any) {
     console.error(`Agent ${agentId} run failed:`, err);
+    addLog(agentId, 'error', err.message || 'Unknown error');
+    state.status = 'error';
+    state.lastError = err.message || 'Unknown error';
     return NextResponse.json({ error: err.message || 'Failed to run agent' }, { status: 500 });
   }
 }

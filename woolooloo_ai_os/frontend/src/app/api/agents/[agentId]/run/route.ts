@@ -106,15 +106,28 @@ export async function POST(
 
     // Execute TOOL calls from the reply
     let toolResults = '';
-    const toolMatches = reply.match(/TOOL:(\w+):(.+?)(?=\n|$)/g);
+    const toolMatches = reply.match(/TOOL:(\w+):([^{\s]+(?:,.*?(?=:)|[^{]*))(?=\n|$)/g);
     if (toolMatches) {
       addLog(agentId, 'task', `Found ${toolMatches.length} tool call(s)`);
       for (const m of toolMatches) {
-        const [_, tn, ...rest] = m.slice(5).split(':');
+        const tn = m.slice(5).split(':')[0];
         const tool = findTool(tn);
         if (tool) {
-          addLog(agentId, 'info', `Executing tool: ${tn}`);
-          const r = await tool.run({});
+          // Parse args: "key,val,key2,val2" format
+          const argsStr = m.slice(5).replace(tn, '').replace(/^:/, '');
+          const args: Record<string, any> = {};
+          const pairs = argsStr.split(/,/);
+          for (let i = 0; i < pairs.length - 1; i += 2) {
+            const k = pairs[i]?.trim();
+            const v = pairs[i + 1]?.trim();
+            if (k && v) args[k] = v;
+          }
+          // Also grab content from the full line if it exists
+          const contentMatch = m.match(/content,(.+)/);
+          if (contentMatch) args.content = contentMatch[1];
+
+          addLog(agentId, 'info', `Executing tool: ${tn} with args: ${JSON.stringify(args)}`);
+          const r = await tool.run(args);
           toolResults += `\n  ${tn}: ${r.ok ? 'OK' : 'FAIL'} ${r.out || r.err}`;
           addLog(agentId, r.ok ? 'info' : 'error', `${tn}: ${r.out || r.err}`);
         }

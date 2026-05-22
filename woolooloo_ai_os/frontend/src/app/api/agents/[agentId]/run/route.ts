@@ -120,13 +120,25 @@ export async function POST(
           continue;
         }
         // Parse key,value pairs (commas separate keys from values)
+        // Special: "path,...:content,..." format → extracts path and content
         const args: Record<string, any> = {};
         const segments = rawArgs.split(',');
         for (let i = 0; i < segments.length; i++) {
-          const k = segments[i]?.trim();
-          if (k && segments[i + 1] != null && !k.startsWith(':')) {
-            args[k] = segments[i + 1]?.trim() || '';
-            i++; // skip the value
+          const seg = segments[i]?.trim();
+          if (!seg) continue;
+          if (i + 1 < segments.length) {
+            const nextSeg = segments[i + 1]?.trim();
+            if (nextSeg && nextSeg.startsWith(':content')) {
+              // Everything after :content is the file content
+              args['path'] = seg;
+              // Join remaining segments as content
+              const contentStart = i + 2;
+              const content = segments.slice(contentStart).join(',').trim();
+              args['content'] = content || nextSeg.slice(8);
+              break;
+            }
+            args[seg] = nextSeg;
+            i++;
           }
         }
         addLog(agentId, 'info', `Executing: ${tn} with ${JSON.stringify(args)}`);

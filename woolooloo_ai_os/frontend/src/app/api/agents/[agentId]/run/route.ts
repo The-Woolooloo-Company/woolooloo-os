@@ -107,7 +107,7 @@ export async function POST(
     // Execute TOOL calls from the reply
     let toolResults = '';
     // Match TOOL:name:args (greedy to get all args on the line)
-    const toolLines = reply.split('\n').filter(l => l.trim().startsWith('TOOL:'));
+    const toolLines = reply.split('\n').filter((l: string) => l.trim().startsWith('TOOL:'));
     if (toolLines.length > 0) {
       addLog(agentId, 'task', `Found ${toolLines.length} tool call(s)`);
       for (const line of toolLines) {

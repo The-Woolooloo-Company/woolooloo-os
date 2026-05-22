@@ -25,7 +25,24 @@ export const ALL_TOOLS: MCPTool[] = [
     name: 'write_file', description: 'Write file (creates dirs)', category: 'fs',
     agents: ['dev', 'ops'],
     run: async (a) => {
-      try { rc(`mkdir -p "$(dirname "${a.path}")"`); rc(`cat > "${a.path}" << 'XEOF'\n${a.content}\nXEOF`); return { ok: true, out: `Wrote ${a.path}` }; }
+      try {
+        // Handle path:/workspace/file.md:content format (strip :content suffix)
+        let p = a.path || '';
+        let c = a.content || '';
+        if (!c && p.includes(':content,')) {
+          const idx = p.indexOf(':content,');
+          c = p.slice(idx + 9); p = p.slice(0, idx);
+        }
+        if (!c && p.includes(':content')) {
+          const idx = p.lastIndexOf(':content');
+          c = p.slice(idx + 8); p = p.slice(0, idx);
+        }
+        rc(`mkdir -p "$(dirname "${p}")"`);
+        const tmp = `/tmp/file_${Date.now()}.tmp`;
+        require('fs').writeFileSync(tmp, c);
+        require('child_process').execSync(`cp "${tmp}" "${p}"`);
+        return { ok: true, out: `Wrote ${p}` };
+      }
       catch (e: any) { return { ok: false, out: '', err: e.message }; }
     },
   },

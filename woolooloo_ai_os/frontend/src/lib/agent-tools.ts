@@ -23,24 +23,21 @@ export const ALL_TOOLS: MCPTool[] = [
   },
   {
     name: 'write_file', description: 'Write file (creates dirs)', category: 'fs',
-    agents: ['dev', 'ops'],
+    agents: ['dev', 'ops', 'product', 'qa', 'growth', 'founder'],
     run: async (a) => {
       try {
-        // Handle path:/workspace/file.md:content format (strip :content suffix)
+        // Handle TOOL:write_file:path,/path/file.md:content,file_content_here format
         let p = a.path || '';
         let c = a.content || '';
-        if (!c && p.includes(':content,')) {
-          const idx = p.indexOf(':content,');
-          c = p.slice(idx + 9); p = p.slice(0, idx);
-        }
-        if (!c && p.includes(':content')) {
-          const idx = p.lastIndexOf(':content');
-          c = p.slice(idx + 8); p = p.slice(0, idx);
-        }
-        rc(`mkdir -p "$(dirname "${p}")"`);
-        const tmp = `/tmp/file_${Date.now()}.tmp`;
-        require('fs').writeFileSync(tmp, c);
-        require('child_process').execSync(`cp "${tmp}" "${p}"`);
+        // If path contains :content, extract content
+        const ci = p.indexOf(':content,');
+        if (ci >= 0) { c = p.slice(ci + 9); p = p.slice(0, ci); }
+        else if (p.endsWith(':content')) { p = p.slice(0, -8); }
+        if (!p || !c) return { ok: false, out: '', err: 'Need path and content' };
+        const fs = require('fs');
+        const cp = require('child_process');
+        fs.mkdirSync(require('path').dirname(p), { recursive: true });
+        fs.writeFileSync(p, c);
         return { ok: true, out: `Wrote ${p}` };
       }
       catch (e: any) { return { ok: false, out: '', err: e.message }; }

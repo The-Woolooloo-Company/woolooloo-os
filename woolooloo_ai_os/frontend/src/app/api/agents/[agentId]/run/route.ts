@@ -122,9 +122,12 @@ export async function POST(
         // Parse key,value pairs (commas separate keys from values)
         const args: Record<string, any> = {};
         const segments = rawArgs.split(',');
-        for (let i = 0; i < segments.length - 1; i += 2) {
+        for (let i = 0; i < segments.length; i++) {
           const k = segments[i]?.trim();
-          if (k) args[k] = segments[i + 1]?.trim() || '';
+          if (k && segments[i + 1] != null && !k.startsWith(':')) {
+            args[k] = segments[i + 1]?.trim() || '';
+            i++; // skip the value
+          }
         }
         addLog(agentId, 'info', `Executing: ${tn} with ${JSON.stringify(args)}`);
         const r = await tool.run(args);

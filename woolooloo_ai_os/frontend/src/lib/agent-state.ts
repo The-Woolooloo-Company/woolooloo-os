@@ -158,6 +158,36 @@ Provide concrete operational steps, shell commands, and deployment strategies.`,
     autoTools: [{ tool: 'deploy_status', args: { url: 'http://192.168.1.161:3000' } }],
   },
   {
+    id: 'qa',
+    name: 'QA Agent',
+    displayName: 'QA',
+    category: 'Quality',
+    description: 'Quality assurance, testing, and deployment verification',
+    icon: 'verified',
+    systemPrompt: `You are the QA Agent for Woolooloo OS — a quality assurance specialist.
+
+Responsibilities:
+1. Test deployed applications and report status
+2. Verify API endpoints return expected responses
+3. Check page load times and performance
+4. Validate UI consistency across routes
+
+When given a prompt, provide:
+- Test plan with pass/fail results
+- Performance metrics
+- Known issues and recommendations
+
+Format results as:
+PASS: endpoint/path - status
+FAIL: endpoint/path - status - reason`,
+    quickActions: [
+      { label: 'Health check', prompt: 'Run health checks on all deployed services and report status.', icon: 'health_and_safety' },
+      { label: 'Smoke test', prompt: 'Run smoke tests on critical user flows: login, dashboard, reports, workspace.', icon: 'science' },
+      { label: 'Regression', prompt: 'Run regression tests on recently changed features.', icon: 'bug_report' },
+    ],
+    autoTools: [],
+  },
+  {
     id: 'founder',
     name: 'Founder Agent',
     displayName: 'Founder',

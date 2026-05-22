@@ -106,31 +106,30 @@ export async function POST(
 
     // Execute TOOL calls from the reply
     let toolResults = '';
-    const toolMatches = reply.match(/TOOL:(\w+):([^{\s]+(?:,.*?(?=:)|[^{]*))(?=\n|$)/g);
-    if (toolMatches) {
-      addLog(agentId, 'task', `Found ${toolMatches.length} tool call(s)`);
-      for (const m of toolMatches) {
-        const tn = m.slice(5).split(':')[0];
+    // Match TOOL:name:args (greedy to get all args on the line)
+    const toolLines = reply.split('\n').filter(l => l.trim().startsWith('TOOL:'));
+    if (toolLines.length > 0) {
+      addLog(agentId, 'task', `Found ${toolLines.length} tool call(s)`);
+      for (const line of toolLines) {
+        const match = line.trim().match(/^TOOL:(\w+):(.+)$/);
+        if (!match) continue;
+        const [, tn, rawArgs] = match;
         const tool = findTool(tn);
-        if (tool) {
-          // Parse args: "key,val,key2,val2" format
-          const argsStr = m.slice(5).replace(tn, '').replace(/^:/, '');
-          const args: Record<string, any> = {};
-          const pairs = argsStr.split(/,/);
-          for (let i = 0; i < pairs.length - 1; i += 2) {
-            const k = pairs[i]?.trim();
-            const v = pairs[i + 1]?.trim();
-            if (k && v) args[k] = v;
-          }
-          // Also grab content from the full line if it exists
-          const contentMatch = m.match(/content,(.+)/);
-          if (contentMatch) args.content = contentMatch[1];
-
-          addLog(agentId, 'info', `Executing tool: ${tn} with args: ${JSON.stringify(args)}`);
-          const r = await tool.run(args);
-          toolResults += `\n  ${tn}: ${r.ok ? 'OK' : 'FAIL'} ${r.out || r.err}`;
-          addLog(agentId, r.ok ? 'info' : 'error', `${tn}: ${r.out || r.err}`);
+        if (!tool) {
+          addLog(agentId, 'error', `Unknown tool: ${tn}`);
+          continue;
         }
+        // Parse key,value pairs (commas separate keys from values)
+        const args: Record<string, any> = {};
+        const segments = rawArgs.split(',');
+        for (let i = 0; i < segments.length - 1; i += 2) {
+          const k = segments[i]?.trim();
+          if (k) args[k] = segments[i + 1]?.trim() || '';
+        }
+        addLog(agentId, 'info', `Executing: ${tn} with ${JSON.stringify(args)}`);
+        const r = await tool.run(args);
+        toolResults += `\n  ${tn}: ${r.ok ? 'OK' : 'FAIL'} ${r.out || r.err}`;
+        addLog(agentId, r.ok ? 'info' : 'error', `${tn}: ${r.out || r.err}`);
       }
     }
 

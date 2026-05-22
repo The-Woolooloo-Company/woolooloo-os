@@ -43,6 +43,8 @@ export interface AgentDefinition {
   icon: string;
   systemPrompt: string;
   quickActions: { label: string; prompt: string; icon: string }[];
+  // Auto-run MCP tools after each agent run
+  autoTools?: { tool: string; args: Record<string, any> }[];
 }
 
 const MAX_LOGS = 200;
@@ -79,6 +81,7 @@ Description: detailed description`,
       { label: 'Feature ideas', prompt: 'Review the current codebase and suggest 3 high-impact features we should build next.', icon: 'rocket_launch' },
       { label: 'Sprint planning', prompt: 'Help plan the next sprint. Review open tasks and suggest what to include.', icon: 'calendar_month' },
     ],
+    autoTools: [],
   },
   {
     id: 'dev',
@@ -105,6 +108,7 @@ Provide code snippets, architecture diagrams in text, and concrete implementatio
       { label: 'Debug', prompt: 'Analyze the current codebase for potential bugs or edge cases that need fixing.', icon: 'bug_report' },
       { label: 'Architecture', prompt: 'Design the architecture for real-time collaboration features.', icon: 'architecture' },
     ],
+    autoTools: [{ tool: 'git_status', args: {} }],
   },
   {
     id: 'growth',
@@ -151,6 +155,7 @@ Provide concrete operational steps, shell commands, and deployment strategies.`,
       { label: 'Security audit', prompt: 'Review the current infrastructure for security vulnerabilities and suggest fixes.', icon: 'security' },
       { label: 'Cost analysis', prompt: 'Analyze current infrastructure costs and suggest optimization.', icon: 'payments' },
     ],
+    autoTools: [{ tool: 'deploy_status', args: { url: 'http://192.168.1.161:3000' } }],
   },
   {
     id: 'founder',

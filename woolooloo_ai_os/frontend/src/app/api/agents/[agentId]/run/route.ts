@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { agentStore, AGENT_DEFINITIONS, addLog, recordRun, type AgentRun } from '@/lib/agent-state';
+import { ALL_TOOLS, findTool } from '@/lib/agent-tools';
 
 const VALID_IDS = AGENT_DEFINITIONS.map(a => a.id);
 
@@ -59,6 +60,12 @@ export async function POST(
     // Call vLLM
     addLog(agentId, 'debug', `Sending to vLLM (model: ${vllmModel})`);
 
+    // Build tool context for the system prompt
+    const myTools = ALL_TOOLS.filter(t => t.agents.includes(agentId));
+    const toolContext = myTools.length > 0
+      ? `\n\n## MCP Tools Available\nTo use a tool, respond with: TOOL:tool_name:arg1_value:arg2_value\n${myTools.map(t => `- ${t.name}: ${t.description}`).join('\n')}`
+      : '';
+
     const response = await fetch(`${vllmHost}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -68,7 +75,7 @@ export async function POST(
       body: JSON.stringify({
         model: vllmModel,
         messages: [
-          { role: 'system', content: def.systemPrompt },
+          { role: 'system', content: def.systemPrompt + toolContext },
           { role: 'user', content: contextPrompt },
         ],
         max_tokens: 4096,
@@ -97,6 +104,37 @@ export async function POST(
       addLog(agentId, 'task', `Found ${taskMatches.length} task suggestion(s)`);
     }
 
+    // Execute TOOL calls from the reply
+    let toolResults = '';
+    const toolMatches = reply.match(/TOOL:(\w+):(.+?)(?=\n|$)/g);
+    if (toolMatches) {
+      addLog(agentId, 'task', `Found ${toolMatches.length} tool call(s)`);
+      for (const m of toolMatches) {
+        const [_, tn, ...rest] = m.slice(5).split(':');
+        const tool = findTool(tn);
+        if (tool) {
+          addLog(agentId, 'info', `Executing tool: ${tn}`);
+          const r = await tool.run({});
+          toolResults += `\n  ${tn}: ${r.ok ? 'OK' : 'FAIL'} ${r.out || r.err}`;
+          addLog(agentId, r.ok ? 'info' : 'error', `${tn}: ${r.out || r.err}`);
+        }
+      }
+    }
+
+    // Run agent's autoTools (behaviors)
+    let autoResults = '';
+    if (def.autoTools) {
+      for (const at of def.autoTools) {
+        const tool = findTool(at.tool);
+        if (tool) {
+          addLog(agentId, 'task', `Auto-tool: ${at.tool}`);
+          const r = await tool.run(at.args);
+          autoResults += `\n  ${at.tool}: ${r.ok ? 'OK' : 'FAIL'} ${r.out || r.err}`;
+          addLog(agentId, r.ok ? 'info' : 'error', `Auto ${at.tool}: ${r.out || r.err}`);
+        }
+      }
+    }
+
     // Record the run
     const run: AgentRun = {
       id: runId, agentId, prompt, response: reply,
@@ -106,9 +144,13 @@ export async function POST(
     addLog(agentId, 'info', 'Run completed successfully');
 
     return NextResponse.json({
-      success: true, reply, agentId, prompt, runId,
+      success: true,
+      reply: reply + (toolResults || autoResults ? `\n## Automation Results${toolResults}${autoResults}` : ''),
+      agentId, prompt, runId,
       timestamp: new Date().toISOString(), tokenUsage,
       tasksSuggested: taskMatches?.length || 0,
+      toolResults: toolResults.trim() || null,
+      autoResults: autoResults.trim() || null,
     });
   } catch (err: any) {
     console.error(`Agent ${agentId} run failed:`, err);

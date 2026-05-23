@@ -6,7 +6,7 @@ import { Navbar } from "@/components/navbar";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getClients, getAllProjects, Client, ClientProject } from "@/lib/clients";
+import { getClients, getAllProjects, Client, ClientProject, seedMockClients } from "@/lib/clients";
 import { useTasks } from "@/hooks/useTasks";
 import { useExternalProjects } from "@/hooks/useExternalProjects";
 import { formatDuration } from "@/lib/clockify";
@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [allProjects, setAllProjects] = useState<{ project: ClientProject; client: Client }[]>([]);
 
   useEffect(() => {
+    seedMockClients();
     setClients(getClients());
     setAllProjects(getAllProjects());
   }, []);

@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getClients, getAllProjects, ClientProject } from "@/lib/clients";
+import { getClients, getAllProjects, ClientProject, seedMockClients } from "@/lib/clients";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ type WorkspaceMode = "project" | "misc";
 
 export default function WorkspacePage() {
   const [activePanel, setActivePanel] = useState<Panel>("terminal");
-  const [clients] = useState(() => getClients());
+  const [clients] = useState(() => { seedMockClients(); return getClients(); });
   const [allProjects] = useState(() => getAllProjects());
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("misc");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);

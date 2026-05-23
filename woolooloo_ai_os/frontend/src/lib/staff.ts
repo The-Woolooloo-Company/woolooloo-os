@@ -150,7 +150,7 @@ export async function syncStaffFromApis(): Promise<StaffMember[]> {
     console.warn('Failed to sync Clockify users:', err);
   }
 
-  // 4. Ensure Suni Jular exists (manual entry) — only ONE entry
+  // 4. Ensure Suni Jular exists (manual entry)
   const suniKey = keyFor('Suni Jular');
   if (!staffMap.has(suniKey)) {
     const suni: StaffMember = {
@@ -165,6 +165,23 @@ export async function syncStaffFromApis(): Promise<StaffMember[]> {
       updatedAt: now,
     };
     staffMap.set(suniKey, suni);
+  }
+
+  // 5. Ensure Woolooloo Agents (AI) exists (manual entry)
+  const agentKey = keyFor('Woolooloo Agents');
+  if (!staffMap.has(agentKey)) {
+    const agents: StaffMember = {
+      id: crypto.randomUUID(),
+      name: 'Woolooloo Agents',
+      email: 'agents@woolooloo.tech',
+      role: 'ai',
+      status: 'active',
+      source: 'manual',
+      notes: 'AI agent team — product, dev, growth, ops, qa, founder',
+      createdAt: now,
+      updatedAt: now,
+    };
+    staffMap.set(agentKey, agents);
   }
 
   const finalStaff = Array.from(staffMap.values());

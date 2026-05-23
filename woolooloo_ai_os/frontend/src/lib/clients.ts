@@ -383,7 +383,7 @@ export function seedMockClients(): void {
           description: 'Dashboard analytics platform. Built by AI agent chain: Product PRD → Dev (MCP tools) → Ops deploy → QA tests. Files in /workspace/acme.',
           linearProjectId: '1df3f041-8ea5-4e21-b8f4-2c2e9a6150c1',
           linearProjectKey: 'ACD',
-          githubRepos: [],
+          githubRepos: ['The-Woolooloo-Company/acme-dashboard'],
           agentsEnabled: true,
           integrations: [
             { type: 'linear', connected: true, config: { projectId: '1df3f041-8ea5-4e21-b8f4-2c2e9a6150c1' } },

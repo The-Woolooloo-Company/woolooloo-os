@@ -87,7 +87,7 @@ export default function ProjectDetailPage() {
   );
 
   const projectEntries = useMemo(() => {
-    if (!project?.clockifyProjectId) return clockifyEntries;
+    if (!project?.clockifyProjectId) return []; // no Clockify project → show nothing, not all entries
     let entries = clockifyEntries.filter((e: any) => e.projectId === project.clockifyProjectId);
     // Filter out andrewq's entries on Woolooloo OS (he works on WoolsApp, not Woolooloo OS)
     if (project.id === 'woolooloo-os') {
@@ -152,13 +152,13 @@ export default function ProjectDetailPage() {
   const assignees = useMemo(() => {
     const map = new Map<string, { name: string; taskCount: number }>();
     projectTasks.forEach((t: LinearTask) => {
-      const name = t.assigneeName || "Unassigned";
+      const name = t.assigneeName || (project?.agentsEnabled ? "Woolooloo Agents" : "Unassigned");
       const existing = map.get(name) || { name, taskCount: 0 };
       existing.taskCount++;
       map.set(name, existing);
     });
     return Array.from(map.values());
-  }, [projectTasks]);
+  }, [projectTasks, project]);
 
   const timeUsers = useMemo(() => {
     const map = new Map<string, { name: string; hours: number }>();
@@ -329,7 +329,7 @@ export default function ProjectDetailPage() {
                       </thead>
                       <tbody>
                         {activeTasks.map((task: LinearTask) => (
-                          <TaskRow key={task.id} task={task} />
+                          <TaskRow key={task.id} task={task} agentsEnabled={project.agentsEnabled} />
                         ))}
                       </tbody>
                     </table>
@@ -596,7 +596,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
   );
 }
 
-function TaskRow({ task }: { task: LinearTask }) {
+function TaskRow({ task, agentsEnabled }: { task: LinearTask; agentsEnabled?: boolean }) {
+  const assigneeName = task.assigneeName || (agentsEnabled ? "Woolooloo Agents" : "Unassigned");
   return (
     <tr className="border-b border-md-outline-variant/25 hover:bg-md-on-surface/5 transition-colors">
       <td className="py-4 px-6">
@@ -606,14 +607,10 @@ function TaskRow({ task }: { task: LinearTask }) {
         </Link>
       </td>
       <td className="py-4 px-4">
-        {task.assigneeName ? (
-          <Link href="/staff" className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-md-primary-container text-md-on-primary-container text-label-small">
-            <span className="material-symbols-rounded text-14">person</span>
-            {task.assigneeName}
-          </Link>
-        ) : (
-          <span className="text-body-small text-md-on-surface-variant">Unassigned</span>
-        )}
+        <Link href="/staff" className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-md-primary-container text-md-on-primary-container text-label-small">
+          <span className="material-symbols-rounded text-14">{agentsEnabled && !task.assigneeName ? "psychology" : "person"}</span>
+          {assigneeName}
+        </Link>
       </td>
       <td className="py-4 px-4">
         <Badge variant={getPriorityColor(task.priority) as any}>{getPriorityLabel(task.priority)}</Badge>

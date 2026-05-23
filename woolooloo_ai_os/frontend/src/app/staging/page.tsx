@@ -24,6 +24,8 @@ interface Entry {
   lastDeploy?: string;
   tunnel: boolean;
   target: string;
+  repo: string;
+  port: number;
 }
 
 function load(): Entry[] {
@@ -40,6 +42,7 @@ export default function Page() {
   const [sub, setSub] = useState('');
   const [tun, setTun] = useState(true);
   const [target, setTarget] = useState('192.168.1.161');
+  const [repo, setRepo] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [cfStatus, setCfStatus] = useState<'checking' | 'ok' | 'down'>('checking');
 
@@ -62,9 +65,10 @@ export default function Page() {
   const openEdit = (p: ClientProject, c: Client) => {
     setEditItem({ project: p, client: c });
     const ex = findEntry(p.id);
-    setSub(ex?.subdomain || p.name.toLowerCase().replace(/[^a-z0-9]/g, '-'));
+    setSub(ex?.subdomain || p.name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8));
     setTun(ex?.tunnel ?? true);
     setTarget(ex?.target || '192.168.1.161');
+    setRepo(ex?.repo || (p.githubRepos?.[0] || ''));
   };
 
   const doSave = () => {
@@ -75,7 +79,7 @@ export default function Page() {
     const entry: Entry = {
       projectId: project.id, projectName: project.name, clientName: client.name,
       subdomain: sub, url, status: ex?.status || 'idle', lastDeploy: ex?.lastDeploy,
-      tunnel: tun, target: target,
+      tunnel: tun, target: target, repo: repo, port: ex?.port || 0,
     };
     const updated = entries.filter(e => e.projectId !== project.id);
     updated.push(entry);
@@ -87,20 +91,24 @@ export default function Page() {
   const doDeploy = async (entry: Entry) => {
     setBusy(entry.projectId);
     setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'deploying' } : x));
-    showToast(`Deploying ${entry.projectName}...`, "info");
+    showToast(`Deploying ${entry.projectName} (${entry.repo})...`, "info");
 
     try {
       const res = await fetch(`${API}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subdomain: entry.subdomain }),
-        signal: AbortSignal.timeout(30000),
+        body: JSON.stringify({
+          subdomain: entry.subdomain,
+          repo: entry.repo,
+          target: entry.target,
+        }),
+        signal: AbortSignal.timeout(120000),
       });
       const data = await res.json();
 
       if (data.ok) {
-        setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'live', lastDeploy: new Date().toISOString() } : x));
-        showToast(`${entry.projectName} deployed to ${entry.url}!`, "success");
+        setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'live', lastDeploy: new Date().toISOString(), port: data.port } : x));
+        showToast(`${entry.projectName} deployed!`, "success");
       } else {
         throw new Error(data.error || 'Deploy failed');
       }
@@ -112,11 +120,10 @@ export default function Page() {
     }
   };
 
-  const doTest = async (url: string) => {
-    try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      showToast(`${url}: HTTP ${r.status}`, r.ok ? "success" : "error");
-    } catch (e: any) { showToast(`${url}: ${e.message}`, "error"); }
+  const doTest = (url: string) => {
+    // Open in new tab so browser resolves Cloudflare DNS
+    window.open(url, '_blank');
+    showToast(`Opened ${url} in new tab — check status there`, "info");
   };
 
   const doUndeploy = async (entry: Entry) => {
@@ -186,9 +193,10 @@ export default function Page() {
                         <a href={entry.url} target="_blank" rel="noreferrer" className="text-body-medium text-md-primary hover:underline truncate">{entry.url}</a>
                         <Badge variant={entry.status === 'live' ? 'success-tonal' : entry.status === 'deploying' ? 'warning-tonal' : 'secondary-tonal'}>{entry.status}</Badge>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 flex-wrap">
                         {entry.tunnel && <Badge variant="primary-tonal"><span className="material-symbols-rounded text-14 mr-1">cloud</span>Tunnel</Badge>}
-                        <Badge variant="secondary-outlined">→ {entry.target}</Badge>
+                        <Badge variant="secondary-outlined">→ {entry.target}:{entry.port}</Badge>
+                        {entry.repo && <Badge variant="secondary-tonal"><span className="material-symbols-rounded text-14 mr-1">code</span>{entry.repo.split('/').pop()}</Badge>}
                       </div>
                       {entry.lastDeploy && <p className="text-body-small text-md-on-surface-variant">Deployed: {new Date(entry.lastDeploy).toLocaleString()}</p>}
                       <div className="flex gap-2 flex-wrap">
@@ -218,7 +226,7 @@ export default function Page() {
         {/* Modal */}
         {editItem && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEditItem(null)}>
-            <Card className="w-[500px] mx-4" onClick={e => e.stopPropagation()}>
+            <Card className="w-[500px] mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <CardHeader>
                 <CardTitle>Configure Staging</CardTitle>
                 <CardDescription>{editItem.project.name} — {editItem.client.name}</CardDescription>
@@ -228,12 +236,27 @@ export default function Page() {
                 <div>
                   <label className="text-label-medium text-md-on-surface-variant block mb-1">Subdomain</label>
                   <div className="flex items-center gap-2">
-                    <Input value={sub} onChange={e => setSub(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="acme" className="flex-1" />
+                    <Input value={sub} onChange={e => setSub(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="ncm" className="flex-1" />
                     <span className="text-body-medium text-md-on-surface-variant shrink-0">.{DOM}</span>
                   </div>
                   <p className="text-body-small text-md-on-surface-variant mt-1">
                     URL: <span className="text-md-primary">{sub ? `https://${sub}.${DOM}` : '...'}</span>
                   </p>
+                </div>
+
+                {/* Repo selector */}
+                <div>
+                  <label className="text-label-medium text-md-on-surface-variant block mb-1">GitHub Repo</label>
+                  <select
+                    value={repo}
+                    onChange={e => setRepo(e.target.value)}
+                    className="w-full p-3 rounded-xl bg-md-surface-container/50 border border-md-outline-variant text-md-on-surface focus:border-md-primary focus:outline-none"
+                  >
+                    <option value="">Select a repo...</option>
+                    {(editItem.project.githubRepos || []).map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Target */}
@@ -268,7 +291,7 @@ export default function Page() {
                     onClick={() => setTun(!tun)}
                     className={`w-12 h-7 rounded-full transition-colors relative shrink-0 ml-4 ${tun ? 'bg-md-primary' : 'bg-md-surface-variant'}`}
                     role="switch"
-                    aria-checked={tun}
+                    aria-checked
                   >
                     <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${tun ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
@@ -277,7 +300,7 @@ export default function Page() {
                 {/* Actions */}
                 <div className="flex gap-2 justify-end pt-2">
                   <Button variant="text" onClick={() => setEditItem(null)}>Cancel</Button>
-                  <Button onClick={doSave}><span className="material-symbols-rounded text-18 mr-1">save</span>Save</Button>
+                  <Button onClick={doSave} disabled={!repo}><span className="material-symbols-rounded text-18 mr-1">save</span>Save</Button>
                 </div>
               </CardContent>
             </Card>

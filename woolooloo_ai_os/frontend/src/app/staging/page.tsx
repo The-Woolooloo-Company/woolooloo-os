@@ -11,8 +11,8 @@ import { getAllProjects, ClientProject, Client, seedMockClients } from "@/lib/cl
 import { useToast } from "@/components/toast";
 
 const KEY = 'woolooloo-staging';
-const DOMAIN = 'woolooloo.tech';
-const CF_API = 'http://192.168.1.72:9090';
+const DOM = 'woolooloo.tech';
+const API = 'http://192.168.1.72:9091';
 
 interface Entry {
   projectId: string;
@@ -23,6 +23,7 @@ interface Entry {
   status: 'idle' | 'deploying' | 'live' | 'error';
   lastDeploy?: string;
   tunnel: boolean;
+  target: string;
 }
 
 function load(): Entry[] {
@@ -34,53 +35,81 @@ function save(d: Entry[]) { if (typeof window !== 'undefined') localStorage.setI
 export default function Page() {
   const { showToast } = useToast();
   const [items, setItems] = useState<{ project: ClientProject; client: Client }[]>([]);
-  const [data, setData] = useState<Entry[]>([]);
+  const [entries, setData] = useState<Entry[]>([]);
   const [editItem, setEditItem] = useState<{ project: ClientProject; client: Client } | null>(null);
   const [sub, setSub] = useState('');
   const [tun, setTun] = useState(true);
+  const [target, setTarget] = useState('192.168.1.161');
   const [busy, setBusy] = useState<string | null>(null);
+  const [cfStatus, setCfStatus] = useState<'checking' | 'ok' | 'down'>('checking');
 
   useEffect(() => {
     seedMockClients();
     setItems(getAllProjects());
     setData(load());
+    checkCF();
   }, []);
 
-  const find = (id: string) => data.find(e => e.projectId === id);
+  const checkCF = async () => {
+    try {
+      const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) });
+      setCfStatus(r.ok ? 'ok' : 'down');
+    } catch { setCfStatus('down'); }
+  };
+
+  const findEntry = (id: string) => entries.find(e => e.projectId === id);
 
   const openEdit = (p: ClientProject, c: Client) => {
     setEditItem({ project: p, client: c });
-    const ex = find(p.id);
+    const ex = findEntry(p.id);
     setSub(ex?.subdomain || p.name.toLowerCase().replace(/[^a-z0-9]/g, '-'));
     setTun(ex?.tunnel ?? true);
+    setTarget(ex?.target || '192.168.1.161');
   };
 
   const doSave = () => {
     if (!editItem) return;
     const { project, client } = editItem;
-    const url = `https://${sub}.${DOMAIN}`;
-    const ex = find(project.id);
+    const url = `https://${sub}.${DOM}`;
+    const ex = findEntry(project.id);
     const entry: Entry = {
       projectId: project.id, projectName: project.name, clientName: client.name,
-      subdomain: sub, url, status: ex?.status || 'idle', lastDeploy: ex?.lastDeploy, tunnel: tun,
+      subdomain: sub, url, status: ex?.status || 'idle', lastDeploy: ex?.lastDeploy,
+      tunnel: tun, target: target,
     };
-    const updated = data.filter(e => e.projectId !== project.id);
+    const updated = entries.filter(e => e.projectId !== project.id);
     updated.push(entry);
-    setData(updated);
-    save(updated);
+    setData(updated); save(updated);
     setEditItem(null);
-    showToast(`${project.name} → ${url}`, "success");
+    showToast(`${project.name} staged → ${url}`, "success");
   };
 
-  const doDeploy = (e: Entry) => {
-    setBusy(e.projectId);
-    setData(prev => prev.map(x => x.projectId === e.projectId ? { ...x, status: 'deploying' } : x));
-    showToast(`Deploying ${e.projectName}...`, "info");
-    setTimeout(() => {
-      setData(prev => prev.map(x => x.projectId === e.projectId ? { ...x, status: 'live', lastDeploy: new Date().toISOString() } : x));
+  const doDeploy = async (entry: Entry) => {
+    setBusy(entry.projectId);
+    setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'deploying' } : x));
+    showToast(`Deploying ${entry.projectName}...`, "info");
+
+    try {
+      const res = await fetch(`${API}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subdomain: entry.subdomain }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'live', lastDeploy: new Date().toISOString() } : x));
+        showToast(`${entry.projectName} deployed to ${entry.url}!`, "success");
+      } else {
+        throw new Error(data.error || 'Deploy failed');
+      }
+    } catch (e: any) {
+      setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'error' } : x));
+      showToast(`Deploy failed: ${e.message}`, "error");
+    } finally {
       setBusy(null);
-      showToast(`${e.projectName} deployed!`, "success");
-    }, 3000);
+    }
   };
 
   const doTest = async (url: string) => {
@@ -88,6 +117,21 @@ export default function Page() {
       const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
       showToast(`${url}: HTTP ${r.status}`, r.ok ? "success" : "error");
     } catch (e: any) { showToast(`${url}: ${e.message}`, "error"); }
+  };
+
+  const doUndeploy = async (entry: Entry) => {
+    try {
+      const res = await fetch(`${API}/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subdomain: entry.subdomain }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setData(prev => prev.filter(e => e.projectId !== entry.projectId));
+        showToast(`${entry.projectName} removed`, "success");
+      }
+    } catch (e: any) { showToast(`Undeploy failed: ${e.message}`, "error"); }
   };
 
   if (!items.length) return <div className="min-h-screen bg-md-surface flex items-center justify-center"><span className="h-8 w-8 animate-spin rounded-full border-4 border-md-primary border-r-transparent" /></div>;
@@ -99,23 +143,24 @@ export default function Page() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-display-small text-md-on-surface">Staging</h1>
-            <p className="text-body-large text-md-on-surface-variant mt-1">Deploy project previews via *.woolooloo.tech</p>
+            <p className="text-body-large text-md-on-surface-variant mt-1">Deploy project previews via *.{DOM}</p>
           </div>
-          <Button variant="tonal" onClick={() => {
-            fetch(`${CF_API}/ready`, { signal: AbortSignal.timeout(3000) })
-              .then(r => r.ok ? showToast("Cloudflared: Connected", "success") : showToast("Cloudflared: Down", "error"))
-              .catch(() => showToast("Cloudflared: Unreachable", "error"));
-          }}>
-            <span className="material-symbols-rounded text-18 mr-1">dns</span>Cloudflared
-          </Button>
+          <div className="flex items-center gap-2">
+            <span className={`w-3 h-3 rounded-full ${cfStatus === 'ok' ? 'bg-green-500' : cfStatus === 'down' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'}`} />
+            <Button variant="tonal" onClick={checkCF}>
+              <span className="material-symbols-rounded text-18 mr-1">dns</span>
+              Cloudflared
+            </Button>
+          </div>
         </div>
 
+        {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
             { label: 'Projects', value: items.length },
-            { label: 'Configured', value: data.length },
-            { label: 'Live', value: data.filter(e => e.status === 'live').length },
-            { label: 'Tunnels', value: data.filter(e => e.tunnel).length },
+            { label: 'Configured', value: entries.length },
+            { label: 'Live', value: entries.filter(e => e.status === 'live').length },
+            { label: 'Tunnels', value: entries.filter(e => e.tunnel).length },
           ].map((s, i) => (
             <Card key={i}><CardContent className="pt-6">
               <p className="text-headline-medium text-md-on-surface">{s.value}</p>
@@ -124,9 +169,10 @@ export default function Page() {
           ))}
         </div>
 
+        {/* Projects */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map(({ project, client }) => {
-            const entry = find(project.id);
+            const entry = findEntry(project.id);
             return (
               <Card key={project.id} className="hover:shadow-md-1 transition-shadow">
                 <CardHeader>
@@ -140,14 +186,19 @@ export default function Page() {
                         <a href={entry.url} target="_blank" rel="noreferrer" className="text-body-medium text-md-primary hover:underline truncate">{entry.url}</a>
                         <Badge variant={entry.status === 'live' ? 'success-tonal' : entry.status === 'deploying' ? 'warning-tonal' : 'secondary-tonal'}>{entry.status}</Badge>
                       </div>
-                      {entry.tunnel && <Badge variant="primary-tonal"><span className="material-symbols-rounded text-14 mr-1">cloud</span>Tunnel</Badge>}
+                      <div className="flex gap-1">
+                        {entry.tunnel && <Badge variant="primary-tonal"><span className="material-symbols-rounded text-14 mr-1">cloud</span>Tunnel</Badge>}
+                        <Badge variant="secondary-outlined">→ {entry.target}</Badge>
+                      </div>
                       {entry.lastDeploy && <p className="text-body-small text-md-on-surface-variant">Deployed: {new Date(entry.lastDeploy).toLocaleString()}</p>}
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <Button variant="tonal" size="sm" onClick={() => doDeploy(entry)} disabled={busy === entry.projectId}>
-                          <span className="material-symbols-rounded text-16 mr-1">rocket_launch</span>{busy === entry.projectId ? '...' : 'Deploy'}
+                          <span className="material-symbols-rounded text-16 mr-1">rocket_launch</span>
+                          {busy === entry.projectId ? 'Deploying...' : 'Deploy'}
                         </Button>
                         <Button variant="text" size="sm" onClick={() => doTest(entry.url)}><span className="material-symbols-rounded text-16 mr-1">science</span>Test</Button>
                         <Button variant="text" size="sm" onClick={() => openEdit(project, client)}><span className="material-symbols-rounded text-16 mr-1">edit</span></Button>
+                        <Button variant="text" size="sm" className="text-md-error" onClick={() => doUndeploy(entry)}><span className="material-symbols-rounded text-16 mr-1">delete</span></Button>
                       </div>
                     </div>
                   ) : (
@@ -164,28 +215,66 @@ export default function Page() {
           })}
         </div>
 
+        {/* Modal */}
         {editItem && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEditItem(null)}>
-            <Card className="w-[450px] mx-4" onClick={e => e.stopPropagation()}>
-              <CardHeader><CardTitle>Configure Staging</CardTitle><CardDescription>{editItem.project.name} — {editItem.client.name}</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
+            <Card className="w-[500px] mx-4" onClick={e => e.stopPropagation()}>
+              <CardHeader>
+                <CardTitle>Configure Staging</CardTitle>
+                <CardDescription>{editItem.project.name} — {editItem.client.name}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* Subdomain */}
                 <div>
                   <label className="text-label-medium text-md-on-surface-variant block mb-1">Subdomain</label>
                   <div className="flex items-center gap-2">
                     <Input value={sub} onChange={e => setSub(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="acme" className="flex-1" />
-                    <span className="text-body-medium text-md-on-surface-variant shrink-0">.{DOMAIN}</span>
+                    <span className="text-body-medium text-md-on-surface-variant shrink-0">.{DOM}</span>
                   </div>
-                  <p className="text-body-small text-md-on-surface-variant mt-1">URL: <span className="text-md-primary">{sub ? `https://${sub}.${DOMAIN}` : '...'}</span></p>
+                  <p className="text-body-small text-md-on-surface-variant mt-1">
+                    URL: <span className="text-md-primary">{sub ? `https://${sub}.${DOM}` : '...'}</span>
+                  </p>
                 </div>
+
+                {/* Target */}
+                <div>
+                  <label className="text-label-medium text-md-on-surface-variant block mb-1">Deployment Target</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: '192.168.1.161', label: '192.168.1.161', desc: 'Production Docker host' },
+                      { value: '192.168.1.72', label: '192.168.1.72', desc: 'Local machine (this PC)' },
+                    ].map(t => (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => setTarget(t.value)}
+                        className={`flex-1 p-3 rounded-xl text-left border-2 transition-all ${target === t.value ? 'border-md-primary bg-md-primary-container/50' : 'border-transparent bg-md-surface-container/50 hover:bg-md-surface-container'}`}
+                      >
+                        <p className="text-body-medium font-medium text-md-on-surface">{t.label}</p>
+                        <p className="text-body-small text-md-on-surface-variant">{t.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tunnel toggle */}
                 <div className="flex items-center justify-between p-3 rounded-xl bg-md-surface-container/50">
                   <div>
                     <p className="text-label-large text-md-on-surface">Cloudflared Tunnel</p>
-                    <p className="text-body-small text-md-on-surface-variant">Via /DATA/AppData/cloudflared/config.yml</p>
+                    <p className="text-body-small text-md-on-surface-variant">Route via config.yml on this PC</p>
                   </div>
-                  <button onClick={() => setTun(!tun)} className={`w-12 h-7 rounded-full transition-colors relative ${tun ? 'bg-md-primary' : 'bg-md-surface-variant'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setTun(!tun)}
+                    className={`w-12 h-7 rounded-full transition-colors relative shrink-0 ml-4 ${tun ? 'bg-md-primary' : 'bg-md-surface-variant'}`}
+                    role="switch"
+                    aria-checked={tun}
+                  >
                     <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${tun ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                 </div>
+
+                {/* Actions */}
                 <div className="flex gap-2 justify-end pt-2">
                   <Button variant="text" onClick={() => setEditItem(null)}>Cancel</Button>
                   <Button onClick={doSave}><span className="material-symbols-rounded text-18 mr-1">save</span>Save</Button>

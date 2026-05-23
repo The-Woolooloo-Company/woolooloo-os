@@ -148,10 +148,11 @@ export function getClientGithubRepos(clientId: string): string[] {
 
 export function seedMockClients(): void {
   const existing = getClients();
-  // Check for latest seed version — needs 7Colours + 6 clients + githubRepos on On-guard
+  // Check for latest seed version — needs 7Colours + 7 clients + Acme Corp demo
+  const hasAcme = existing.some(c => c.id === 'acme-corp');
   const hasGithubRepos = existing.some(c => c.projects.some(p => Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
   const woolsappHasClockify = existing.some(c => c.projects.some(p => p.id === 'woolsapp' && p.clockifyProjectId));
-  if (existing.length === 6 && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify) {
+  if (existing.length === 7 && existing.some(c => c.id === 'acme-corp') && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify) {
     return; // already has latest seed
   }
   // Either empty or outdated — re-seed with latest
@@ -365,6 +366,29 @@ export function seedMockClients(): void {
             { type: 'github', connected: true, config: { repo: 'The-Woolooloo-Company/woolooloo-os' } },
           ],
           createdAt: new Date(2024, 0, 1).toISOString(),
+        },
+      ],
+    },
+    {
+      id: 'acme-corp',
+      name: 'Acme Corp',
+      color: 'accent',
+      notes: 'Demo client — AI agent chain build. Built by 4-agent chain (Product → Dev → Ops → QA) via MCP tools.',
+      createdAt: new Date(2025, 5, 22).toISOString(),
+      updatedAt: new Date().toISOString(),
+      projects: [
+        {
+          id: 'acme-dashboard',
+          name: 'Acme Corp Dashboard',
+          description: 'Dashboard analytics platform. Built by AI agent chain: Product PRD → Dev (MCP tools) → Ops deploy → QA tests. Files in /workspace/acme.',
+          linearProjectId: '1df3f041-8ea5-4e21-b8f4-2c2e9a6150c1',
+          linearProjectKey: 'ACD',
+          githubRepos: [],
+          agentsEnabled: true,
+          integrations: [
+            { type: 'linear', connected: true, config: { projectId: '1df3f041-8ea5-4e21-b8f4-2c2e9a6150c1' } },
+          ],
+          createdAt: new Date(2025, 5, 22).toISOString(),
         },
       ],
     },

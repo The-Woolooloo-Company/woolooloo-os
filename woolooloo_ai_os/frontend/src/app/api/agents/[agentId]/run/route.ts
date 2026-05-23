@@ -57,8 +57,9 @@ export async function POST(
       ? `Recent activity:\n${recentLogs}\n\n${prompt}`
       : prompt;
 
-    // Call vLLM
+    // Call vLLM (track compute time)
     addLog(agentId, 'debug', `Sending to vLLM (model: ${vllmModel})`);
+    const runStart = Date.now();
 
     // Build tool context for the system prompt
     const myTools = ALL_TOOLS.filter(t => t.agents.includes(agentId));
@@ -95,8 +96,9 @@ export async function POST(
     const data = await response.json();
     const reply = data.choices?.[0]?.message?.content || 'No response from model.';
     const tokenUsage = data.usage || {};
+    const runElapsedSecs = Math.max(1, Math.round((Date.now() - runStart) / 1000));
 
-    addLog(agentId, 'stream', `Response (${reply.length} chars, ${tokenUsage.total_tokens || '?'} tokens)`);
+    addLog(agentId, 'stream', `Response (${reply.length} chars, ${tokenUsage.total_tokens || '?'} tokens, ${runElapsedSecs}s)`);
 
     // Parse TASK: lines
     const taskMatches = reply.match(/TASK:\s*\[Priority:\s*(P[0-3])\]\s*\[Project:\s*([^\]]+)\]\s*(.+?)(?=\nTASK:|\n\n|\n$)/gi);
@@ -162,6 +164,24 @@ export async function POST(
       }
     }
 
+    // Auto-log compute time to Clockify
+    let clockifyLogResult = '';
+    try {
+      const clockifyTool = findTool('clockify_log');
+      if (clockifyTool) {
+        addLog(agentId, 'task', `Logging ${runElapsedSecs}s compute time to Clockify`);
+        const r = await clockifyTool.run({
+          agent: agentId,
+          description: `${def.displayName} agent compute`,
+          durationSeconds: runElapsedSecs,
+        });
+        clockifyLogResult = `\n  clockify_log: ${r.ok ? 'OK' : 'FAIL'} ${r.out || r.err}`;
+        addLog(agentId, r.ok ? 'info' : 'debug', `Clockify log: ${r.out || r.err}`);
+      }
+    } catch (e: any) {
+      addLog(agentId, 'debug', `Clockify log skipped: ${e.message}`);
+    }
+
     // Record the run
     const run: AgentRun = {
       id: runId, agentId, prompt, response: reply,
@@ -172,12 +192,13 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      reply: reply + (toolResults || autoResults ? `\n## Automation Results${toolResults}${autoResults}` : ''),
+      reply: reply + (toolResults || autoResults || clockifyLogResult ? `\n## Automation Results${toolResults}${autoResults}${clockifyLogResult}` : ''),
       agentId, prompt, runId,
       timestamp: new Date().toISOString(), tokenUsage,
       tasksSuggested: taskMatches?.length || 0,
       toolResults: toolResults.trim() || null,
       autoResults: autoResults.trim() || null,
+      clockifyLog: clockifyLogResult.trim() || null,
     });
   } catch (err: any) {
     console.error(`Agent ${agentId} run failed:`, err);

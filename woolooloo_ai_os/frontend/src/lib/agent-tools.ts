@@ -10,7 +10,7 @@ function rc(cmd: string, cwd?: string): string {
 export interface MCPTool {
   name: string;
   description: string;
-  category: 'fs' | 'git' | 'terminal' | 'linear' | 'github' | 'deploy';
+  category: 'fs' | 'git' | 'terminal' | 'linear' | 'github' | 'deploy' | 'clockify';
   agents: string[];
   run: (args: Record<string, any>) => Promise<{ ok: boolean; out: string; err?: string }>;
 }
@@ -146,6 +146,40 @@ export const ALL_TOOLS: MCPTool[] = [
       const results: string[] = []; let ok = true;
       for (const p of paths) { try { const r = await fetch(`${base}${p}`, { signal: AbortSignal.timeout(5000) }); results.push(`${r.status === 200 ? 'OK' : 'FAIL'} ${p}`); if (r.status !== 200) ok = false; } catch (e: any) { results.push(`FAIL ${p}`); ok = false; } }
       return { ok, out: results.join('\n') };
+    },
+  },
+  {
+    name: 'clockify_log', description: 'Log AI agent compute time to Clockify', category: 'clockify',
+    agents: ['dev', 'ops', 'product', 'qa', 'growth', 'founder'],
+    run: async (a) => {
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_CLOCKIFY_API_KEY;
+        const wsId = process.env.NEXT_PUBLIC_CLOCKIFY_WORKSPACE_ID;
+        if (!apiKey || !wsId) return { ok: false, out: '', err: 'Clockify not configured' };
+        // Get first user for time entry
+        const usersRes = await fetch(`https://api.clockify.me/api/v1/workspaces/${wsId}/users`, {
+          headers: { 'x-api-key': apiKey }, signal: AbortSignal.timeout(10000)
+        });
+        const users = await usersRes.json();
+        if (!users?.[0]?.id) return { ok: false, out: '', err: 'No users found' };
+        const userId = users[0].id;
+        const desc = a.description || `${a.agent} agent compute`;
+        const durationSecs = a.durationSeconds || 1;
+        const now = new Date().toISOString();
+        const body: Record<string, any> = {
+          description: `AI Agent: ${desc}`,
+          timeInterval: { start: now, duration: `PT${durationSecs}S` },
+        };
+        if (a.projectId) body.projectId = a.projectId;
+        const res = await fetch(`https://api.clockify.me/api/v1/workspaces/${wsId}/user/${userId}/time-entries`, {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(10000)
+        });
+        const result = await res.json();
+        return { ok: res.ok, out: res.ok ? `Logged ${durationSecs}s - ${result.id}` : result.message || 'Failed' };
+      } catch (e: any) { return { ok: false, out: '', err: e.message }; }
     },
   },
 ];

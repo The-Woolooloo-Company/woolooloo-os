@@ -29,6 +29,7 @@ const opsItems: DropdownItem[] = [
 
 const moreItems: DropdownItem[] = [
   { href: "/wiki", label: "Wiki", icon: "auto_stories", description: "Knowledge base" },
+  { href: "/staging", label: "Staging", icon: "cloud", description: "Deploy previews to *.woolooloo.tech" },
   { href: "/config", label: "Config", icon: "settings", description: "System settings" },
   { href: "/audit", label: "Audit", icon: "receipt_long", description: "Activity audit log" },
   { href: "/leads", label: "Leads", icon: "person_add", description: "Lead pipeline" },

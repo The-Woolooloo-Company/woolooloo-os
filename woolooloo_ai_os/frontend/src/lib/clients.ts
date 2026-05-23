@@ -225,6 +225,7 @@ export function seedMockClients(): void {
           linearProjectKey: 'PAM',
           clockifyProjectId: '628dffdb690b30632737fdad',
           githubRepos: [
+            'The-Woolooloo-Company/ncm-spectrum',
             'The-Woolooloo-Company/PAM-infra-monorepo',
             'The-Woolooloo-Company/PAM-Runner',
             'The-Woolooloo-Company/PAM-infra-runner',

@@ -148,11 +148,13 @@ export function getClientGithubRepos(clientId: string): string[] {
 
 export function seedMockClients(): void {
   const existing = getClients();
-  // Check for latest seed version — needs 7Colours + 7 clients + Acme Corp demo
+  // Check for latest seed version — needs 7Colours + 7 clients + Acme Corp + all repos
   const hasAcme = existing.some(c => c.id === 'acme-corp');
   const hasGithubRepos = existing.some(c => c.projects.some(p => Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
   const woolsappHasClockify = existing.some(c => c.projects.some(p => p.id === 'woolsapp' && p.clockifyProjectId));
-  if (existing.length === 7 && existing.some(c => c.id === 'acme-corp') && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify) {
+  const nsClearHasRepos = existing.some(c => c.projects.some(p => p.id === 'ns-clear' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
+  const brandicationHasRepos = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
+  if (existing.length === 7 && hasAcme && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify && nsClearHasRepos && brandicationHasRepos) {
     return; // already has latest seed
   }
   // Either empty or outdated — re-seed with latest
@@ -200,10 +202,15 @@ export function seedMockClients(): void {
           linearProjectId: '0295c01f-e3ae-4a8d-89b3-7d30f6ad53a5',
           linearProjectKey: 'NS',
           clockifyProjectId: '68f675c73437e1165fe35cd6',
+          githubRepos: [
+            'The-Woolooloo-Company/ns-clear-infra',
+            'The-Woolooloo-Company/ns-clear-dashboard',
+          ],
           agentsEnabled: true,
           integrations: [
             { type: 'linear', connected: true, config: { projectId: '0295c01f-e3ae-4a8d-89b3-7d30f6ad53a5' } },
             { type: 'clockify', connected: true, config: { projectId: '68f675c73437e1165fe35cd6' } },
+            { type: 'github', connected: true, config: { repos: 'ns-clear' } },
           ],
           createdAt: new Date(2024, 0, 1).toISOString(),
         },
@@ -290,10 +297,15 @@ export function seedMockClients(): void {
           linearProjectId: '5d20d5f6-9d1f-4762-b13c-9859a9d73478',
           linearProjectKey: 'PAI',
           clockifyProjectId: '668bdec0f106f36223181af3',
+          githubRepos: [
+            'The-Woolooloo-Company/brandication-ai',
+            'The-Woolooloo-Company/brandication-api',
+          ],
           agentsEnabled: true,
           integrations: [
             { type: 'linear', connected: true, config: { projectId: '5d20d5f6-9d1f-4762-b13c-9859a9d73478' } },
             { type: 'clockify', connected: true, config: { projectId: '668bdec0f106f36223181af3' } },
+            { type: 'github', connected: true, config: { repos: 'brandication' } },
           ],
           createdAt: new Date(2024, 0, 1).toISOString(),
         },

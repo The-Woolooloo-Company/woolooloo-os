@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getClients, getAllProjects, ClientProject, seedMockClients } from "@/lib/clients";
+import { PiHarness } from "@/components/pi-harness";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -23,13 +24,13 @@ interface FileNode {
   path: string;
 }
 
-type Panel = "terminal" | "files" | "git";
+type Panel = "pi" | "terminal" | "files" | "git";
 type WorkspaceMode = "project" | "misc";
 
 // ─── Workspace Page ────────────────────────────────────────────────────
 
 export default function WorkspacePage() {
-  const [activePanel, setActivePanel] = useState<Panel>("terminal");
+  const [activePanel, setActivePanel] = useState<Panel>("pi");
   const [clients] = useState(() => { seedMockClients(); return getClients(); });
   const [allProjects] = useState(() => getAllProjects());
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("misc");
@@ -388,6 +389,7 @@ export default function WorkspacePage() {
 
   // ─── Panels config ──────────────────────────────────────────
   const panels: { key: Panel; label: string; icon: string }[] = [
+    { key: "pi", label: "Pi Harness", icon: "api" },
     { key: "terminal", label: "Terminal", icon: "terminal" },
     { key: "files", label: "Files", icon: "folder" },
     { key: "git", label: "Git", icon: "commit" },
@@ -402,7 +404,7 @@ export default function WorkspacePage() {
           <div>
             <h1 className="text-display-small text-md-on-surface">Workspace</h1>
             <p className="text-body-large text-md-on-surface-variant mt-0.5">
-              Terminal &middot; File Explorer &middot; Git &middot; AI Context
+              Pi Harness · Terminal · File Explorer · Git · GitHub
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -510,6 +512,11 @@ export default function WorkspacePage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* ─── Main Panel ──────────────────────────────────── */}
           <div className="lg:col-span-3">
+            {/* ─── Pi Harness (default) ──────────────────────── */}
+            {activePanel === "pi" && (
+              <PiHarness />
+            )}
+
             {/* ─── Terminal ────────────────────────────────── */}
             {activePanel === "terminal" && (
               <Card className="overflow-hidden">
@@ -897,6 +904,7 @@ export default function WorkspacePage() {
                         { label: "Find TSX", cmd: "find . -name '*.tsx' | head -20" },
                         { label: "Build", cmd: "npm run build" },
                         { label: "Type Check", cmd: "npx tsc --noEmit" },
+                        { label: "Pull Latest", cmd: "git pull --rebase" },
                       ]
                     : [
                         { label: "Create Dir", cmd: `mkdir -p ${miscRoot}/new-folder` },

@@ -154,7 +154,9 @@ export function seedMockClients(): void {
   const woolsappHasClockify = existing.some(c => c.projects.some(p => p.id === 'woolsapp' && p.clockifyProjectId));
   const nsClearHasRepos = existing.some(c => c.projects.some(p => p.id === 'ns-clear' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
   const brandicationHasRepos = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
-  if (existing.length === 7 && hasAcme && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify && nsClearHasRepos && brandicationHasRepos) {
+  const netcoreHasNoPAMRepos = existing.some(c => c.projects.some(p => p.id === 'nc-pam' && !Array.isArray((p as any).githubRepos) || (p as any).githubRepos.length === 0));
+  const precisionAIHasPAMRepos = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.some((r: string) => r.includes('PAM'))));
+  if (existing.length === 7 && hasAcme && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify && nsClearHasRepos && brandicationHasRepos && netcoreHasNoPAMRepos && precisionAIHasPAMRepos) {
     return; // already has latest seed
   }
   // Either empty or outdated — re-seed with latest
@@ -233,11 +235,6 @@ export function seedMockClients(): void {
           clockifyProjectId: '628dffdb690b30632737fdad',
           githubRepos: [
             'The-Woolooloo-Company/ncm-spectrum',
-            'The-Woolooloo-Company/PAM-infra-monorepo',
-            'The-Woolooloo-Company/PAM-Runner',
-            'The-Woolooloo-Company/PAM-infra-runner',
-            'The-Woolooloo-Company/PAM-infra-web',
-            'The-Woolooloo-Company/PAM-Web',
           ],
           agentsEnabled: true,
           integrations: [
@@ -300,6 +297,11 @@ export function seedMockClients(): void {
           githubRepos: [
             'The-Woolooloo-Company/brandication-ai',
             'The-Woolooloo-Company/brandication-api',
+            'The-Woolooloo-Company/PAM-infra-monorepo',
+            'The-Woolooloo-Company/PAM-Runner',
+            'The-Woolooloo-Company/PAM-infra-runner',
+            'The-Woolooloo-Company/PAM-infra-web',
+            'The-Woolooloo-Company/PAM-Web',
           ],
           agentsEnabled: true,
           integrations: [

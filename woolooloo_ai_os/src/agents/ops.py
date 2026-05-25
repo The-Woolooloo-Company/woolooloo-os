@@ -1,9 +1,8 @@
-from .base import BaseAgent
-from ..models import AgentType
 from ..config import get_settings
-from ..integrations.xero import xero_client
-from ..integrations.linear import linear_client
 from ..integrations.slack import slack_client
+from ..integrations.xero import xero_client
+from ..models import AgentType
+from .base import BaseAgent
 
 
 class OpsAgent(BaseAgent):
@@ -116,9 +115,7 @@ class OpsAgent(BaseAgent):
             failed = await xero_client.get_failed_payments(days=30)
             response = f"Churn signals: {len(failed)} failed payments in last 30 days"
         else:
-            response = await self.think(
-                f"Generate ops report for: {command}"
-            )
+            response = await self.think(f"Generate ops report for: {command}")
 
         await slack_client.post_dm(user, response)
 

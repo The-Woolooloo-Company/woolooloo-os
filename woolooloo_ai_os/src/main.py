@@ -1,9 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from .api import agents, commands, status, webhooks
 from .config import get_settings
-from .api import webhooks, commands, agents, status
 
 settings = get_settings()
 

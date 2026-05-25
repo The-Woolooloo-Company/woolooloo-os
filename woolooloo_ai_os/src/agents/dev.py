@@ -1,9 +1,10 @@
 import httpx
-from .base import BaseAgent
-from ..models import AgentType
+
 from ..config import get_settings
 from ..integrations.linear import linear_client
 from ..integrations.slack import slack_client
+from ..models import AgentType
+from .base import BaseAgent
 
 
 class DevAgent(BaseAgent):
@@ -26,7 +27,6 @@ class DevAgent(BaseAgent):
     async def _handle_linear_event(self, payload: dict) -> dict:
         action = payload.get("action", "")
         issue_data = payload.get("data", {})
-        issue_id = issue_data.get("id")
         identifier = issue_data.get("identifier", "")
 
         if action == "create":
@@ -87,11 +87,13 @@ class DevAgent(BaseAgent):
         pending = []
         for issue in issues.get("issues", {}).get("nodes", []):
             if issue.get("state", {}).get("type") != "completed":
-                pending.append({
-                    "id": issue.get("id"),
-                    "identifier": issue.get("identifier"),
-                    "title": issue.get("title"),
-                })
+                pending.append(
+                    {
+                        "id": issue.get("id"),
+                        "identifier": issue.get("identifier"),
+                        "title": issue.get("title"),
+                    }
+                )
 
         return {
             "action": "heartbeat_check",
@@ -141,9 +143,8 @@ class DevAgent(BaseAgent):
                 response.raise_for_status()
                 result = response.json()
                 return result.get("code", result.get("response", "Code generated"))
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             fallback_result = await self.think(
-                f"Generate code for: {title}\n\n{description}\n\n"
-                "Provide the implementation code."
+                f"Generate code for: {title}\n\n{description}\n\nProvide the implementation code."
             )
             return fallback_result

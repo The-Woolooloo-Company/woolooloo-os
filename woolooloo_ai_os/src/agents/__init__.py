@@ -1,8 +1,9 @@
 import importlib
-from ..models import AgentType
-from typing import Dict, Any
+from typing import Any
 
-_AGENT_MODULE_MAP: Dict[AgentType, str] = {
+from ..models import AgentType
+
+_AGENT_MODULE_MAP: dict[AgentType, str] = {
     AgentType.PRODUCT: ".product",
     AgentType.DEV: ".dev",
     AgentType.GROWTH: ".growth",
@@ -11,7 +12,7 @@ _AGENT_MODULE_MAP: Dict[AgentType, str] = {
     AgentType.FOUNDER: ".founder",
 }
 
-_AGENT_CLASS_MAP: Dict[AgentType, str] = {
+_AGENT_CLASS_MAP: dict[AgentType, str] = {
     AgentType.PRODUCT: "ProductAgent",
     AgentType.DEV: "DevAgent",
     AgentType.GROWTH: "GrowthAgent",
@@ -20,7 +21,7 @@ _AGENT_CLASS_MAP: Dict[AgentType, str] = {
     AgentType.FOUNDER: "FounderAgent",
 }
 
-_cached_agents: Dict[AgentType, Any] = {}
+_cached_agents: dict[AgentType, Any] = {}
 
 
 def _load_agent_class(agent_type: AgentType):

@@ -1,13 +1,12 @@
-import httpx
-from typing import Optional
 from twilio.rest import Client as TwilioClient
+
 from ..config import get_settings
 
 
 class WhatsAppClient:
     def __init__(self):
         self.settings = get_settings()
-        self._client: Optional[TwilioClient] = None
+        self._client: TwilioClient | None = None
 
     @property
     def client(self) -> TwilioClient:
@@ -18,7 +17,7 @@ class WhatsAppClient:
             )
         return self._client
 
-    def send_message(self, to: str, body: str, media_url: Optional[str] = None):
+    def send_message(self, to: str, body: str, media_url: str | None = None):
         message = self.client.messages.create(
             from_=self.settings.TWILIO_WHATSAPP_FROM,
             body=body,
@@ -35,15 +34,12 @@ class WhatsAppClient:
         self,
         to: str,
         template_name: str,
-        variables: Optional[dict] = None,
+        variables: dict | None = None,
     ):
-        from twilio.rest import Client
 
         content_sid = self._get_template_sid(template_name)
         if not content_sid:
-            return self.send_message(
-                to, f"Template {template_name} not configured"
-            )
+            return self.send_message(to, f"Template {template_name} not configured")
 
         payload = {
             "from": self.settings.TWILIO_WHATSAPP_FROM,
@@ -60,7 +56,7 @@ class WhatsAppClient:
             "status": message.status,
         }
 
-    def _get_template_sid(self, template_name: str) -> Optional[str]:
+    def _get_template_sid(self, template_name: str) -> str | None:
         template_mapping = {
             "follow_up": "HX...",
             "proposal": "HX...",

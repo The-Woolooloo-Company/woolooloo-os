@@ -1,12 +1,12 @@
 import httpx
-from typing import Optional
+
 from ..config import get_settings
 
 
 class LLMClient:
     def __init__(
         self,
-        model: Optional[str] = None,
+        model: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ):
@@ -14,8 +14,8 @@ class LLMClient:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.model = model or self.settings.VLLM_MODEL
-        self._vllm_client: Optional[httpx.AsyncClient] = None
-        self._openrouter_client: Optional[httpx.AsyncClient] = None
+        self._vllm_client: httpx.AsyncClient | None = None
+        self._openrouter_client: httpx.AsyncClient | None = None
 
     @property
     def vllm_client(self) -> httpx.AsyncClient:
@@ -48,7 +48,7 @@ class LLMClient:
     async def complete(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         use_fallback: bool = False,
     ) -> str:
         try:
@@ -67,9 +67,7 @@ class LLMClient:
         except Exception:
             return False
 
-    async def _vllm_complete(
-        self, prompt: str, system: Optional[str] = None
-    ) -> str:
+    async def _vllm_complete(self, prompt: str, system: str | None = None) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -88,9 +86,7 @@ class LLMClient:
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
-    async def _openrouter_complete(
-        self, prompt: str, system: Optional[str] = None
-    ) -> str:
+    async def _openrouter_complete(self, prompt: str, system: str | None = None) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -137,9 +133,7 @@ class LLMClient:
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
-    async def _openrouter_chat(
-        self, messages: list[dict[str, str]]
-    ) -> str:
+    async def _openrouter_chat(self, messages: list[dict[str, str]]) -> str:
         response = await self.openrouter_client.post(
             "/chat/completions",
             json={

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Any
-from ..models import AgentType, TriggerType, AGENT_PROMPTS, AgentPrompt
+
 from ..llm.client import llm_client
+from ..models import AGENT_PROMPTS, AgentPrompt, AgentType, TriggerType
 
 
 class BaseAgent(ABC):
@@ -60,7 +60,7 @@ class BaseAgent(ABC):
     async def think(
         self,
         user_prompt: str,
-        context: Optional[str] = None,
+        context: str | None = None,
     ) -> str:
         full_prompt = user_prompt
         if context:

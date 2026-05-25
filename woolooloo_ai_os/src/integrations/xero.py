@@ -1,5 +1,3 @@
-import httpx
-from typing import Optional, List
 from ..config import get_settings
 
 
@@ -26,13 +24,13 @@ class XeroClient:
         mrr = await self.get_mrr()
         return mrr * 12
 
-    async def get_recent_payments(self, days: int = 7) -> List[dict]:
+    async def get_recent_payments(self, days: int = 7) -> list[dict]:
         if not await self._check_available():
             return []
         # TODO: implement via Xero API
         return []
 
-    async def get_failed_payments(self, days: int = 7) -> List[dict]:
+    async def get_failed_payments(self, days: int = 7) -> list[dict]:
         if not await self._check_available():
             return []
         return []

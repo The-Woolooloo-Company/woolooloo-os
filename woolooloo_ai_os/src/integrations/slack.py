@@ -1,12 +1,12 @@
 import httpx
-from typing import Optional
+
 from ..config import get_settings
 
 
 class SlackClient:
     def __init__(self):
         self.settings = get_settings()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -25,8 +25,8 @@ class SlackClient:
         self,
         channel: str,
         text: str,
-        thread_ts: Optional[str] = None,
-        blocks: Optional[list[dict]] = None,
+        thread_ts: str | None = None,
+        blocks: list[dict] | None = None,
     ):
         payload = {
             "channel": channel,
@@ -41,10 +41,8 @@ class SlackClient:
         response.raise_for_status()
         return response.json()
 
-    async def post_dm(self, user_id: str, text: str, blocks: Optional[list[dict]] = None):
-        response = await self.client.post(
-            "/conversations.open", json={"users": user_id}
-        )
+    async def post_dm(self, user_id: str, text: str, blocks: list[dict] | None = None):
+        response = await self.client.post("/conversations.open", json={"users": user_id})
         response.raise_for_status()
         data = response.json()
 
@@ -57,7 +55,7 @@ class SlackClient:
         self,
         channel: str,
         text: str,
-        thread_ts: Optional[str] = None,
+        thread_ts: str | None = None,
     ):
         return await self.post_message(channel, text, thread_ts=thread_ts)
 
@@ -66,7 +64,7 @@ class SlackClient:
         channel: str,
         ts: str,
         text: str,
-        blocks: Optional[list[dict]] = None,
+        blocks: list[dict] | None = None,
     ):
         payload = {
             "channel": channel,
@@ -85,7 +83,7 @@ class SlackClient:
         channel: str,
         content: str,
         filename: str,
-        title: Optional[str] = None,
+        title: str | None = None,
     ):
         import io
 
@@ -103,16 +101,12 @@ class SlackClient:
         return response.json()
 
     async def get_user_info(self, user_id: str):
-        response = await self.client.get(
-            "/users.info", params={"user": user_id}
-        )
+        response = await self.client.get("/users.info", params={"user": user_id})
         response.raise_for_status()
         return response.json()
 
     async def get_conversation_members(self, channel_id: str):
-        response = await self.client.get(
-            "/conversations.members", params={"channel": channel_id}
-        )
+        response = await self.client.get("/conversations.members", params={"channel": channel_id})
         response.raise_for_status()
         return response.json()
 

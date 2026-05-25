@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from ..models import AgentType, TriggerType
+
 from ..agents import get_agent
+from ..models import AgentType
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -26,13 +26,15 @@ async def list_agents():
 
     agents = []
     for agent_type, prompt in AGENT_PROMPTS.items():
-        agents.append({
-            "name": agent_type.value,
-            "description": prompt.description,
-            "capabilities": prompt.capabilities,
-            "triggers": prompt.trigger_conditions,
-            "outputs": prompt.output_format,
-        })
+        agents.append(
+            {
+                "name": agent_type.value,
+                "description": prompt.description,
+                "capabilities": prompt.capabilities,
+                "triggers": prompt.trigger_conditions,
+                "outputs": prompt.output_format,
+            }
+        )
     return {"agents": agents}
 
 
@@ -65,6 +67,7 @@ class CommandRequest(BaseModel):
     trigger: str = "demand"
     input_data: dict = {}
 
+
 @router.post("/{agent_name}/run")
 async def run_specific_agent(agent_name: str, request: CommandRequest):
     try:
@@ -77,6 +80,7 @@ async def run_specific_agent(agent_name: str, request: CommandRequest):
     # Try Celery first, fall back to direct execution when Redis isn't available
     try:
         from ..workers.tasks import run_agent as celery_run_agent
+
         input_data = {
             "command": command,
             "manual_trigger": True,

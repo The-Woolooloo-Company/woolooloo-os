@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+
+from ..integrations.slack import slack_client
 from ..models import AgentType
-from ..workers import tasks as celery_tasks
-from ..integrations.whatsapp import whatsapp_client
+from ..workers.tasks import process_demand_command
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
@@ -13,7 +13,7 @@ class SlackCommandRequest(BaseModel):
     user_id: str
     command: str
     text: str
-    response_url: Optional[str] = None
+    response_url: str | None = None
 
 
 class WhatsAppCommandRequest(BaseModel):
@@ -21,7 +21,7 @@ class WhatsAppCommandRequest(BaseModel):
     body: str
 
 
-def parse_command(text: str) -> tuple[str, str, Optional[AgentType]]:
+def parse_command(text: str) -> tuple[str, str, AgentType | None]:
     text_lower = text.lower().strip()
 
     if text_lower.startswith("@product"):
@@ -73,9 +73,10 @@ async def receive_slack_command(request: SlackCommandRequest):
         user=user_id,
     )
 
+    msg = f"Got it! Delegating to {agent_name} agent. Task ID: {task.id}"
     await slack_client.post_message(
         channel_id,
-        f"Got it! I'm delegating this to the {agent_name} agent. Task ID: {task.id}",
+        msg,
         thread_ts=request.response_url,
     )
 

@@ -1,5 +1,5 @@
 import httpx
-from typing import Optional
+
 from ..config import get_settings
 
 
@@ -12,7 +12,7 @@ class OpenCodeClient:
     async def generate(
         self,
         task: str,
-        context: Optional[dict] = None,
+        context: dict | None = None,
         model: str = "qwen3.5-27b",
     ) -> dict:
         async with httpx.AsyncClient(timeout=300) as client:

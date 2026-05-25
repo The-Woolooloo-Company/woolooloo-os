@@ -1,5 +1,5 @@
 import httpx
-from typing import Optional
+
 from ..config import get_settings
 
 
@@ -7,7 +7,7 @@ class LinearClient:
     def __init__(self):
         self.settings = get_settings()
         self.base_url = "https://api.linear.app/graphql"
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -22,7 +22,7 @@ class LinearClient:
             )
         return self._client
 
-    async def gql(self, query: str, variables: Optional[dict] = None):
+    async def gql(self, query: str, variables: dict | None = None):
         response = await self.client.post(
             "",
             json={"query": query, "variables": variables or {}},
@@ -65,9 +65,9 @@ class LinearClient:
 
     async def get_issues(
         self,
-        team_id: Optional[str] = None,
-        labels: Optional[list[str]] = None,
-        assignee: Optional[str] = None,
+        team_id: str | None = None,
+        labels: list[str] | None = None,
+        assignee: str | None = None,
     ):
         where_clause = "{}"
         if team_id or labels or assignee:
@@ -75,8 +75,8 @@ class LinearClient:
             if team_id:
                 where_parts.append(f'teamId: "{team_id}"')
             if labels:
-                label_filter = ", ".join([f'name: "{l}"' for l in labels])
-                where_parts.append(f'labels: {{ nodes: {{ {label_filter} }} }}')
+                label_filter = ", ".join([f'name: "{label}"' for label in labels])
+                where_parts.append(f"labels: {{ nodes: {{ {label_filter} }} }}")
             if assignee:
                 where_parts.append(f'assigneeId: "{assignee}"')
             where_clause = "{" + ", ".join(where_parts) + "}"
@@ -116,11 +116,11 @@ class LinearClient:
     async def create_issue(
         self,
         title: str,
-        description: Optional[str] = None,
-        team_id: Optional[str] = None,
-        assignee_id: Optional[str] = None,
-        label_ids: Optional[list[str]] = None,
-        priority: Optional[int] = None,
+        description: str | None = None,
+        team_id: str | None = None,
+        assignee_id: str | None = None,
+        label_ids: list[str] | None = None,
+        priority: int | None = None,
     ):
         mutation = """
         mutation CreateIssue($input: IssueCreateInput!) {
@@ -151,11 +151,11 @@ class LinearClient:
     async def update_issue(
         self,
         issue_id: str,
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        state_id: Optional[str] = None,
-        assignee_id: Optional[str] = None,
-        priority: Optional[int] = None,
+        title: str | None = None,
+        description: str | None = None,
+        state_id: str | None = None,
+        assignee_id: str | None = None,
+        priority: int | None = None,
     ):
         mutation = """
         mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
@@ -195,9 +195,7 @@ class LinearClient:
             }
         }
         """
-        return await self.gql(
-            mutation, {"input": {"issueId": issue_id, "body": body}}
-        )
+        return await self.gql(mutation, {"input": {"issueId": issue_id, "body": body}})
 
     async def get_teams(self):
         query = """
@@ -221,7 +219,7 @@ class LinearClient:
 linear_client = LinearClient()
 
 
-def get_agent_for_linear_action(action: str, payload: dict) -> Optional[str]:
+def get_agent_for_linear_action(action: str, payload: dict) -> str | None:
     action_to_agent = {
         "create": "product",
         "update": "product",
@@ -230,7 +228,7 @@ def get_agent_for_linear_action(action: str, payload: dict) -> Optional[str]:
 
     data = payload.get("data", {})
     labels = data.get("labels", {}).get("nodes", [])
-    label_names = [l.get("name", "").lower() for l in labels]
+    label_names = [label.get("name", "").lower() for label in labels]
 
     if "dev" in label_names or "dev-task" in label_names:
         return "dev"

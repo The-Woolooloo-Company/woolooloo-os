@@ -1,7 +1,7 @@
-from .base import BaseAgent
-from ..models import AgentType
 from ..integrations.notion import notion_client
 from ..integrations.slack import slack_client
+from ..models import AgentType
+from .base import BaseAgent
 
 
 class GrowthAgent(BaseAgent):
@@ -21,7 +21,7 @@ class GrowthAgent(BaseAgent):
 
     async def _handle_linear_event(self, payload: dict) -> dict:
         issue_data = payload.get("data", {})
-        identifier = issue_data.get("identifier", "")
+        _ = issue_data.get("identifier", "")  # logged for debugging
 
         return await self._draft_campaign(
             title=issue_data.get("title", ""),

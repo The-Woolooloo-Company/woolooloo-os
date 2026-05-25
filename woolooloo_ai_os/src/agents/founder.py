@@ -1,9 +1,9 @@
-from .base import BaseAgent
-from ..models import AgentType
 from ..config import get_settings
-from ..integrations.notion import notion_client
 from ..integrations.linear import linear_client
+from ..integrations.notion import notion_client
 from ..integrations.slack import slack_client
+from ..models import AgentType
+from .base import BaseAgent
 
 
 class FounderAgent(BaseAgent):
@@ -39,11 +39,10 @@ class FounderAgent(BaseAgent):
 
             if action_items:
                 if len(action_items) > 2:
-                    linear_result = await linear_client.create_issue(
+                    await linear_client.create_issue(
                         title=f"[From Notes] {title}",
-                        description=f"Extracted from Notion: {note_id}\n\nAction items:\n" + "\n".join(
-                            f"- {item}" for item in action_items
-                        ),
+                        description=f"Extracted from Notion: {note_id}\n\nAction items:\n"
+                        + "\n".join(f"- {item}" for item in action_items),
                         priority=2,
                     )
                     projects_created += 1
@@ -58,12 +57,19 @@ class FounderAgent(BaseAgent):
 
             processed += 1
 
-        summary = f"Good morning! I processed {processed} notes and created {projects_created} Linear items."
-
-        await slack_client.post_dm(
-            self.settings.FOUNDER_USER_ID if hasattr(self.settings, 'FOUNDER_USER_ID') else "founder",
-            summary,
+        notes_processed = processed
+        projects_created = projects_created
+        summary = (
+            f"Good morning! I processed {notes_processed} notes "
+            f"and created {projects_created} Linear items."
         )
+
+        target = (
+            self.settings.FOUNDER_USER_ID
+            if hasattr(self.settings, "FOUNDER_USER_ID")
+            else "founder"
+        )
+        await slack_client.post_dm(target, summary)
 
         return {
             "action": "daily_digest",
@@ -109,8 +115,7 @@ Format as a concise markdown report."""
         user = input_data.get("user")
 
         response = await self.think(
-            f"Founder {user} request: {command}\n\n"
-            "Process this and return actionable next steps."
+            f"Founder {user} request: {command}\n\nProcess this and return actionable next steps."
         )
 
         await slack_client.post_dm(user, f"Here's my analysis:\n\n{response}")
@@ -120,7 +125,7 @@ Format as a concise markdown report."""
     async def _handle_notion_note(self, note: dict) -> dict:
         note_id = note.get("id")
         title = self._extract_title(note)
-        content = self._extract_content(note)
+        _ = self._extract_content(note)  # validate content extraction
 
         action_items = await self._extract_action_items(note)
 
@@ -134,9 +139,8 @@ Format as a concise markdown report."""
             if len(action_items) > 2:
                 linear_result = await linear_client.create_issue(
                     title=f"[From Notes] {title}",
-                    description=f"From Notion: {note_id}\n\n" + "\n".join(
-                        f"- {item}" for item in action_items
-                    ),
+                    description=f"From Notion: {note_id}\n\n"
+                    + "\n".join(f"- {item}" for item in action_items),
                 )
                 results["linear_project"] = linear_result
             else:
@@ -170,6 +174,7 @@ Only include items that are:
         try:
             import json
             import re
+
             json_match = re.search(r"\[.*\]", result, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())

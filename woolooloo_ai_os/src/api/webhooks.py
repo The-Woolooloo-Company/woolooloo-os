@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Request, HTTPException, Header
-from typing import Optional
+import hashlib
+import hmac
+import json
+
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
+
 from ..config import get_settings
 from ..workers.tasks import process_linear_webhook
-import hmac
-import hashlib
-import json
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 settings = get_settings()
@@ -14,8 +15,8 @@ settings = get_settings()
 class LinearWebhookPayload(BaseModel):
     action: str
     data: dict
-    webhook_id: Optional[str] = None
-    created_at: Optional[str] = None
+    webhook_id: str | None = None
+    created_at: str | None = None
 
 
 def verify_linear_signature(payload: bytes, signature: str) -> bool:
@@ -23,9 +24,7 @@ def verify_linear_signature(payload: bytes, signature: str) -> bool:
         return True
 
     secret = settings.LINEAR_WEBHOOK_SECRET.encode()
-    expected_signature = hmac.new(
-        secret, payload, hashlib.sha256
-    ).hexdigest()
+    expected_signature = hmac.new(secret, payload, hashlib.sha256).hexdigest()
 
     return hmac.compare_digest(f"sha256={expected_signature}", signature)
 
@@ -33,8 +32,8 @@ def verify_linear_signature(payload: bytes, signature: str) -> bool:
 @router.post("/linear")
 async def receive_linear_webhook(
     request: Request,
-    x_linear_signature: Optional[str] = Header(None),
-    x_linear_webhook_id: Optional[str] = Header(None),
+    x_linear_signature: str | None = Header(None),
+    x_linear_webhook_id: str | None = Header(None),
 ):
     payload = await request.body()
 

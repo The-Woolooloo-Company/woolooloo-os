@@ -1,13 +1,12 @@
-import httpx
-from typing import Optional
 from notion_client import AsyncClient
+
 from ..config import get_settings
 
 
 class NotionClient:
     def __init__(self):
         self.settings = get_settings()
-        self._client: Optional[AsyncClient] = None
+        self._client: AsyncClient | None = None
 
     @property
     def client(self) -> AsyncClient:
@@ -18,8 +17,8 @@ class NotionClient:
     async def query_database(
         self,
         database_id: str,
-        filter_props: Optional[dict] = None,
-        sorts: Optional[list[dict]] = None,
+        filter_props: dict | None = None,
+        sorts: list[dict] | None = None,
     ):
         payload = {}
         if filter_props:
@@ -39,7 +38,7 @@ class NotionClient:
         self,
         database_id: str,
         properties: dict,
-        children: Optional[list[dict]] = None,
+        children: list[dict] | None = None,
     ):
         payload = {
             "parent": {"database_id": database_id},
@@ -53,12 +52,10 @@ class NotionClient:
     async def update_page(self, page_id: str, properties: dict):
         return await self.client.pages.update(page_id, properties=properties)
 
-    async def append_block_children(
-        self, block_id: str, children: list[dict]
-    ):
+    async def append_block_children(self, block_id: str, children: list[dict]):
         return await self.client.blocks.children.append(block_id, children)
 
-    async def search(self, query: str, filter_type: Optional[str] = None):
+    async def search(self, query: str, filter_type: str | None = None):
         return await self.client.search(
             query, filter={"property": "object", "value": filter_type or "page"}
         )
@@ -86,7 +83,7 @@ class NotionClient:
         )
         return drafts.get("results", [])
 
-    async def get_leads(self, status: Optional[str] = None):
+    async def get_leads(self, status: str | None = None):
         if not self.settings.NOTION_LEADS_DB_ID:
             return []
 
@@ -125,9 +122,7 @@ class NotionClient:
             {
                 "object": "block",
                 "type": "heading_2",
-                "heading_2": {
-                    "rich_text": [{"type": "text", "text": {"content": "Content"}}]
-                },
+                "heading_2": {"rich_text": [{"type": "text", "text": {"content": "Content"}}]},
             },
             {
                 "object": "block",
@@ -143,16 +138,14 @@ class NotionClient:
             },
         ]
 
-        return await self.create_page(
-            self.settings.NOTION_CAMPAIGNS_DB_ID, properties, children
-        )
+        return await self.create_page(self.settings.NOTION_CAMPAIGNS_DB_ID, properties, children)
 
     async def create_proposal(
         self,
         title: str,
         client_name: str,
         content: str,
-        deal_value: Optional[float] = None,
+        deal_value: float | None = None,
     ):
         if not self.settings.NOTION_PROPOSALS_DB_ID:
             raise Exception("Proposals database not configured")
@@ -188,9 +181,7 @@ class NotionClient:
             },
         ]
 
-        return await self.create_page(
-            self.settings.NOTION_PROPOSALS_DB_ID, properties, children
-        )
+        return await self.create_page(self.settings.NOTION_PROPOSALS_DB_ID, properties, children)
 
 
 notion_client = NotionClient()

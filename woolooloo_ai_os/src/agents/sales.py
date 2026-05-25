@@ -1,7 +1,7 @@
-from .base import BaseAgent
-from ..models import AgentType
 from ..integrations.notion import notion_client
 from ..integrations.slack import slack_client
+from ..models import AgentType
+from .base import BaseAgent
 
 
 class SalesAgent(BaseAgent):
@@ -44,7 +44,7 @@ class SalesAgent(BaseAgent):
         return {
             "action": "heartbeat_check",
             "new_leads": len(leads),
-            "qualified": sum(1 for l in leads if self._is_qualified({})),
+            "qualified": sum(1 for lead in leads if self._is_qualified(lead)),
         }
 
     async def _handle_command(self, input_data: dict) -> dict:
@@ -52,8 +52,7 @@ class SalesAgent(BaseAgent):
         user = input_data.get("user")
 
         response = await self.think(
-            f"Process sales command from {user}: {command}\n\n"
-            "Return next action to take."
+            f"Process sales command from {user}: {command}\n\nReturn next action to take."
         )
 
         await slack_client.post_dm(user, f"Sales update: {response}")
@@ -74,8 +73,11 @@ class SalesAgent(BaseAgent):
         qualification = await self._qualify_lead(lead_data)
 
         if qualification.get("qualified"):
-            proposal = await self._draft_proposal(lead_data, qualification)
-            response_text = "Thanks for reaching out! I've received your details and will send a proposal shortly."
+            await self._draft_proposal(lead_data, qualification)
+            response_text = (
+                "Thanks for reaching out! I've received your details "
+                "and will send a proposal shortly."
+            )
         else:
             self._add_to_nurture(lead_data, qualification)
             response_text = "Thanks for your message! I'll be in touch soon with more information."
@@ -120,6 +122,7 @@ Return JSON:
         try:
             import json
             import re
+
             json_match = re.search(r"\{.*\}", result, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())

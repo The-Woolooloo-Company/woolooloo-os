@@ -1,8 +1,8 @@
-from .base import BaseAgent
-from ..models import AgentType
 from ..integrations.linear import linear_client
 from ..integrations.notion import notion_client
 from ..integrations.slack import slack_client
+from ..models import AgentType
+from .base import BaseAgent
 
 
 class ProductAgent(BaseAgent):
@@ -22,7 +22,6 @@ class ProductAgent(BaseAgent):
     async def _handle_linear_event(self, payload: dict) -> dict:
         action = payload.get("action", "")
         issue_data = payload.get("data", {})
-        issue_id = issue_data.get("id")
         issue_identifier = issue_data.get("identifier", "")
 
         if action == "create":
@@ -63,7 +62,16 @@ I'll update this ticket with progress as I work through it."""
                     "Linear ID": {"rich_text": [{"text": {"content": identifier}}]},
                     "Status": {"select": {"name": "In Progress"}},
                 },
-                children=[{"type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": spec}}]}}],
+                children=[
+                    {
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [
+                                {"type": "text", "text": {"content": spec}},
+                            ]
+                        },
+                    }
+                ],
             )
 
         return {

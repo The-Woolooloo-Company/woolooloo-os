@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+
+from fastapi import APIRouter
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
@@ -23,6 +23,7 @@ async def health_check():
 
     try:
         from ..llm.client import llm_client
+
         is_available = await llm_client._is_vllm_available()
         components["vllm"] = "healthy" if is_available else "unavailable"
     except Exception:

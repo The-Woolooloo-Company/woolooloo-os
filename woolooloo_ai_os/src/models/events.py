@@ -1,23 +1,24 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Literal
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
-class TriggerType(str, Enum):
+class TriggerType(StrEnum):
     EVENT = "event"
     SCHEDULE = "schedule"
     DEMAND = "demand"
 
 
-class ExecutionStatus(str, Enum):
+class ExecutionStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
 
 
-class AgentType(str, Enum):
+class AgentType(StrEnum):
     PRODUCT = "product"
     DEV = "dev"
     GROWTH = "growth"
@@ -26,20 +27,20 @@ class AgentType(str, Enum):
     FOUNDER = "founder"
 
 
-class AgentStatus(str, Enum):
+class AgentStatus(StrEnum):
     IDLE = "idle"
     RUNNING = "running"
     ERROR = "error"
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     FOUNDER = "founder"
     PRODUCT = "product"
     ENGINEER = "engineer"
@@ -56,8 +57,8 @@ class BaseEvent(BaseModel):
 class LinearEventPayload(BaseModel):
     action: str
     data: dict
-    webhook_id: Optional[str] = None
-    created_at: Optional[str] = None
+    webhook_id: str | None = None
+    created_at: str | None = None
 
 
 class TaskEvent(BaseEvent):
@@ -77,21 +78,21 @@ class DemandEvent(BaseEvent):
     command: str
     channel: str
     user: str
-    agent_type: Optional[AgentType] = None
+    agent_type: AgentType | None = None
 
 
 class AgentExecutionRequest(BaseModel):
     agent_type: AgentType
     trigger: TriggerType
     input: dict
-    trigger_detail: Optional[str] = None
+    trigger_detail: str | None = None
 
 
 class AgentExecutionResponse(BaseModel):
     execution_id: str
     agent_type: AgentType
     status: ExecutionStatus
-    output: Optional[dict] = None
-    error: Optional[str] = None
-    duration_ms: Optional[int] = None
+    output: dict | None = None
+    error: str | None = None
+    duration_ms: int | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

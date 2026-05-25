@@ -1,9 +1,8 @@
 import time
-from datetime import datetime
-from celery import chain, group
-from .celery_app import celery_app
-from ..models import AgentType, TriggerType
+
 from ..llm.client import llm_client
+from ..models import AgentType, TriggerType
+from .celery_app import celery_app
 
 
 @celery_app.task(bind=True)
@@ -90,6 +89,8 @@ def process_demand_command(
     channel: str,
     user: str,
 ):
+    from ..agents import get_agent
+
     agent = get_agent(AgentType(agent_type))
 
     result = agent.run(

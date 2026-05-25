@@ -195,9 +195,9 @@ export async function getTimeEntries(params: {
     projectMap.set(p.id, p.name);
   }
 
-  // Determine which users to fetch (all active by default)
+  // Determine which users to fetch (all non-removed members)
   const targetUserIds = params.userIds || allUsers
-    .filter(u => u.membershipStatus === 'ACTIVE')
+    .filter(u => !['REMOVED', 'DISABLED', 'DELETED'].includes(u.membershipStatus))
     .map(u => u.id);
 
   // Fetch entries for each user, paginating as needed

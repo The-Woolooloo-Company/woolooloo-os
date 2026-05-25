@@ -229,9 +229,10 @@ export async function GET(request: NextRequest) {
       const projectMap = new Map<string, string>();
       projectsRaw.forEach((p: any) => projectMap.set(p.id, p.name));
 
-      // Only fetch active members
+      // Fetch time entries for all non-removed users
+      // Clockify statuses: OWNER, ADMIN, ACTIVE, MEMBER, INVITED
       const activeUsers = usersRaw.filter(
-        (u: any) => u.status === 'ACTIVE' || u.status === 'MEMBER' || !u.status,
+        (u: any) => !['REMOVED', 'DISABLED', 'DELETED'].includes(u.status || ''),
       );
 
       const cacheKey = `${startDate || 'all'}-${endDate || 'all'}`;

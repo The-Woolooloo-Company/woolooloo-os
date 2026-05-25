@@ -224,10 +224,11 @@ export default function ReportsPage() {
       }));
   }, [filteredEntries, dateRange]);
 
-  // ─── Weekly comparison (relative to date range end) ────────────
+  // ─── Weekly comparison (relative to date range end + weekOffset) ──
   const weeklyData = useMemo(() => {
-    const refWeekStart = startOfWeek(dateRange.end, { weekStartsOn: 1 });
-    const refWeekEnd = endOfWeek(dateRange.end, { weekStartsOn: 1 });
+    const refDate = subWeeks(dateRange.end, weekOffset);
+    const refWeekStart = startOfWeek(refDate, { weekStartsOn: 1 });
+    const refWeekEnd = endOfWeek(refDate, { weekStartsOn: 1 });
     const prevWeekStart = subWeeks(refWeekStart, 1);
     const prevWeekEnd = refWeekStart;
     const days = eachDayOfInterval({ start: prevWeekStart, end: refWeekEnd });
@@ -257,7 +258,7 @@ export default function ReportsPage() {
       current: Math.round(d.current * 10) / 10,
       previous: Math.round(d.previous * 10) / 10,
     }));
-  }, [filteredEntries, dateRange]);
+  }, [filteredEntries, dateRange, weekOffset]);
 
   // ─── Hours by project ──────────────────────────────────────────
   const projectHours = useMemo(() => {
@@ -281,9 +282,15 @@ export default function ReportsPage() {
       .sort((a, b) => b.hours - a.hours);
   }, [filteredEntries, allProjects]);
 
-  // ─── Hours by staff ────────────────────────────────────────────
+  // ─── Hours by staff (merge Clockify data with localStorage staff) ─
   const staffHours = useMemo(() => {
     const map = new Map<string, { name: string; hours: number; billable: number; entries: number }>();
+    // Seed with all known staff (from localStorage) so they show even with 0 hours
+    staff.forEach((s: any) => {
+      const key = s.clockifyUserId || s.id;
+      map.set(key, { name: s.name, hours: 0, billable: 0, entries: 0 });
+    });
+    // Aggregate from time entries
     filteredEntries.forEach((e: any) => {
       const key = e.userId || "unknown";
       const entry = map.get(key) || { name: e.userName || "Unknown", hours: 0, billable: 0, entries: 0 };
@@ -295,7 +302,7 @@ export default function ReportsPage() {
     return Array.from(map.entries())
       .map(([id, d]) => ({ ...d, userId: id, utilization: Math.min(100, Math.round((d.hours / 80) * 100)) }))
       .sort((a, b) => b.hours - a.hours);
-  }, [filteredEntries]);
+  }, [filteredEntries, staff]);
 
   // ─── Task breakdown per project ────────────────────────────────
   const projectTasks = useMemo(() => {

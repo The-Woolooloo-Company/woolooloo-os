@@ -1,5 +1,5 @@
 const SESSION_KEY = 'woolooloo-session';
-const CREDENTIALS_KEY = 'woolooloo-credentials';
+const USERS_KEY = 'woolooloo-users';
 
 export interface UserSession {
   username: string;
@@ -10,38 +10,51 @@ export interface UserSession {
 export interface LoginCredentials {
   username: string;
   password: string;
+  isAdmin: boolean;
 }
 
-// Default credentials (can be overridden via Config page)
-const DEFAULT_CREDENTIALS: LoginCredentials = {
-  username: 'dustin',
-  password: 'WooloolooOS!',
-};
+// Default users
+const DEFAULT_USERS: LoginCredentials[] = [
+  { username: 'dustin', password: 'SQH5ACkSoX8DP92D', isAdmin: true },
+];
 
 export function setCredentials(credentials: LoginCredentials): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(credentials));
+  localStorage.setItem(USERS_KEY, JSON.stringify([credentials]));
 }
 
-export function getCredentials(): LoginCredentials {
-  if (typeof window === 'undefined') return DEFAULT_CREDENTIALS;
+export function getCredentials(): LoginCredentials[] {
+  if (typeof window === 'undefined') return DEFAULT_USERS;
   try {
-    const saved = localStorage.getItem(CREDENTIALS_KEY);
-    return saved ? JSON.parse(saved) : DEFAULT_CREDENTIALS;
+    const saved = localStorage.getItem(USERS_KEY);
+    return saved ? JSON.parse(saved) : DEFAULT_USERS;
   } catch {
-    return DEFAULT_CREDENTIALS;
+    return DEFAULT_USERS;
   }
+}
+
+export function addUser(user: LoginCredentials): void {
+  if (typeof window === 'undefined') return;
+  const users = getCredentials();
+  const existingIdx = users.findIndex(u => u.username === user.username);
+  if (existingIdx >= 0) {
+    users[existingIdx] = user;
+  } else {
+    users.push(user);
+  }
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
 export function login(username: string, password: string): { success: boolean; error?: string } {
   if (typeof window === 'undefined') return { success: false, error: 'Not available server-side' };
 
-  const { username: adminUser, password: adminPass } = getCredentials();
-  if (username === adminUser && password === adminPass) {
+  const users = getCredentials();
+  const user = users.find(u => u.username === username && u.password === password);
+  if (user) {
     const session: UserSession = {
       username,
       loggedInAt: new Date().toISOString(),
-      isAdmin: true,
+      isAdmin: user.isAdmin,
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     return { success: true };

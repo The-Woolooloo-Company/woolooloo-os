@@ -55,7 +55,13 @@ export function useExternalProjects(): UseExternalProjectsReturn {
     // Fetch Clockify + Linear via proxy API (bypasses CORS, cached)
     if (isClockifyConfigured) {
       try {
-        const res = await fetch('/api/clockify?type=all');
+        // Get last 90 days of time entries (avoids 200-entry-per-user limit)
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(start.getDate() - 90);
+        const startStr = start.toISOString().split('T')[0];
+        const endStr = now.toISOString().split('T')[0];
+        const res = await fetch(`/api/clockify?type=all&start=${startStr}&end=${endStr}`);
         const data = await res.json();
 
         // Map proxy response to expected types

@@ -14,7 +14,11 @@ const PROJECT_MAP: { clockifyId: string; linearId: string; name: string }[] = [
   { clockifyId: '668bdec0f106f36223181af3', linearId: '5d20d5f6-9d1f-4762-b13c-9859a9d73478', name: 'Brandication' },
   { clockifyId: '6a03984e43c3a07a3016ab48', linearId: '41d95655-0161-49b7-89bb-025b013d1e99', name: '7Colours' },
   { clockifyId: '686d20d53aa1ec7de1560c79', linearId: '78cedd46-c15f-45d3-b02d-d20a2593f9d4', name: 'Woolooloo OS' },
-  { clockifyId: '686d20d53aa1ec7de1560c79', linearId: '345aa2f5-b194-4dbe-84a4-f46ece9cd7a2', name: 'WoolsApp' }, // shared Clockify project with Woolooloo OS
+  { clockifyId: '686d20d53aa1ec7de1560c79', linearId: '345aa2f5-b194-4dbe-84a4-f46ece9cd7a2', name: 'WoolsApp' },
+  { clockifyId: '65b12fb3a6a2546ee2b9a143', linearId: '', name: 'SPARC Adhoc' },
+  { clockifyId: '6a1003f294f14d8139125db9', linearId: '', name: 'Woolooloo Internal' },
+  { clockifyId: '651c0b0d0ca0676d0f43ef78', linearId: '', name: 'iCoach - Cricket' },
+  { clockifyId: '651c0bb0e5fa3b229d9868a2', linearId: '', name: 'iCoach - Golf' },
 ];
 
 // Reverse map: Linear projectId → Clockify projectId

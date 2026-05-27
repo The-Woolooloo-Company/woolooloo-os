@@ -147,17 +147,20 @@ export function getClientGithubRepos(clientId: string): string[] {
 // Clockify projects: https://clockify.me/works/628df4f7ff03bd3855e1fc0e/projects
 
 export function seedMockClients(): void {
-  const existing = getClients();
-  // Check for latest seed version — needs 7Colours + 7 clients + Acme Corp + all repos
-  const hasAcme = existing.some(c => c.id === 'acme-corp');
-  const hasGithubRepos = existing.some(c => c.projects.some(p => Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
-  const woolsappHasClockify = existing.some(c => c.projects.some(p => p.id === 'woolsapp' && p.clockifyProjectId));
-  const nsClearHasRepos = existing.some(c => c.projects.some(p => p.id === 'ns-clear' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
-  const brandicationHasRepos = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
-  const netcoreHasNoPAMRepos = existing.some(c => c.projects.some(p => p.id === 'nc-pam' && !Array.isArray((p as any).githubRepos) || (p as any).githubRepos.length === 0));
-  const precisionAIHasPAMRepos = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.some((r: string) => r.includes('PAM'))));
-  if (existing.length === 7 && hasAcme && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify && nsClearHasRepos && brandicationHasRepos && netcoreHasNoPAMRepos && precisionAIHasPAMRepos) {
-    return; // already has latest seed
+  try {
+    const existing = getClients();
+    // Check for latest seed version — needs 7Colours + 7 clients + Acme Corp + PAM repos in Brandication
+    const hasAcme = existing.some(c => c.id === 'acme-corp');
+    const hasGithubRepos = existing.some(c => c.projects.some(p => Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
+    const woolsappHasClockify = existing.some(c => c.projects.some(p => p.id === 'woolsapp' && p.clockifyProjectId));
+    const nsClearHasRepos = existing.some(c => c.projects.some(p => p.id === 'ns-clear' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
+    const brandicationHasRepos = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.length > 0));
+    const brandicationHasPAM = existing.some(c => c.projects.some(p => p.id === 'pai-brandication' && Array.isArray((p as any).githubRepos) && (p as any).githubRepos.some((r: string) => typeof r === 'string' && r.includes('PAM'))));
+    if (existing.length === 7 && hasAcme && existing.some(c => c.id === '7colours') && existing.some(c => c.id === 'netsweeper') && hasGithubRepos && woolsappHasClockify && nsClearHasRepos && brandicationHasRepos && brandicationHasPAM) {
+      return; // already has latest seed
+    }
+  } catch {
+    // If validation fails for any reason, fall through to re-seed
   }
   // Either empty or outdated — re-seed with latest
 

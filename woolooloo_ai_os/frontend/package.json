@@ -10,6 +10,7 @@
     "dev:5000": "PORT=5000 next dev"
   },
   "dependencies": {
+    "@qdrant/js-client-rest": "^1.18.0",
     "@radix-ui/react-slot": "^1.1.0",
     "bootstrap": "^5.3.8",
     "class-variance-authority": "^0.7.0",

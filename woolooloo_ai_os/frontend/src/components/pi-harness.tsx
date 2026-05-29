@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { format, intervalToDuration } from "date-fns";
-import { getAllProjects, seedMockClients } from "@/lib/clients";
+import { getAllProjects, seedMockClients, Client, ClientProject } from "@/lib/clients";
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -18,6 +18,7 @@ interface RunningProcess {
   status: "running" | "completed" | "failed";
   output: string[];
   exitCode?: number;
+  repo?: string;
 }
 
 interface CommandHistory {
@@ -28,6 +29,7 @@ interface CommandHistory {
   duration?: number;
   status: "success" | "failed" | "pending";
   outputPreview?: string;
+  repo?: string;
 }
 
 interface GithubRepo {
@@ -39,9 +41,19 @@ interface GithubRepo {
   open_issues_count: number;
   pushed_at: string;
   status: "connected" | "error" | "checking";
+  clientId?: string;
+  project?: { id: string; name: string };
 }
 
 type TabKey = "command" | "processes" | "github";
+
+// ─── Project/Repo selector ─────────────────────────────────────
+
+interface ProjectRepo {
+  client: Client;
+  project: ClientProject;
+  repo: { name: string; path: string };
+}
 
 // ─── Pi Harness Component ──────────────────────────────────────
 
@@ -57,6 +69,17 @@ export function PiHarness() {
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ─── Project/Repo selection state ───────────────────────────
+  const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+
+  // ─── Load all data on mount ─────────────────────────────────
+  useEffect(() => {
+    seedMockClients();
+    loadGithubRepos();
+  }, []);
+
   // ─── Auto-scroll terminal ───────────────────────────────────
   useEffect(() => {
     if (terminalRef.current) {
@@ -64,12 +87,97 @@ export function PiHarness() {
     }
   }, [terminalOutput]);
 
-  // ─── Load repos from GitHub API + local clients data ───────
-  useEffect(() => {
-    loadGithubRepos();
+  // ─── Build repos from clients data ──────────────────────────
+  const projectRepos = useMemo((): ProjectRepo[] => {
+    seedMockClients();
+    const projects = getAllProjects();
+    const results: ProjectRepo[] = [];
+
+    for (const { project, client } of projects) {
+      const repoNames = project.githubRepos || [];
+      for (const repoName of repoNames) {
+        results.push({
+          client,
+          project,
+          repo: {
+            name: repoName.split('/')[1] || repoName,
+            path: `/workspace/${repoName.split('/')[1] || repoName}`,
+          },
+        });
+      }
+    }
+    return results;
   }, []);
 
-  // ─── Build repos from local clients data ───────────────────
+  // ─── Group repos by project ─────────────────────────────────
+  const reposByProject = useMemo(() => {
+    const map = new Map<string, ProjectRepo[]>();
+    for (const pr of projectRepos) {
+      const key = `${pr.client.id}::${pr.project.id}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(pr);
+    }
+    return map;
+  }, [projectRepos]);
+
+  // ─── Available projects for selected client ─────────────────
+  const availableProjects = useMemo(() => {
+    if (!selectedClient) return projectRepos.map(pr => ({ client: pr.client, project: pr.project }));
+    return projectRepos
+      .filter(pr => pr.client.id === selectedClient)
+      .map(pr => ({ client: pr.client, project: pr.project }));
+  }, [selectedClient, projectRepos]);
+
+  // ─── Available repos for selected project ───────────────────
+  const availableRepos = useMemo(() => {
+    if (!selectedProject) return [];
+    const all = availableProjects.filter(p => p.project.id === selectedProject);
+    return all.flatMap(p => projectRepos.filter(pr =>
+      pr.client.id === p.client.id && pr.project.id === p.project.id
+    ));
+  }, [selectedProject, availableProjects, projectRepos]);
+
+  // ─── Unique clients ─────────────────────────────────────────
+  const uniqueClients = useMemo(() => {
+    const set = new Map<string, Client>();
+    for (const pr of projectRepos) {
+      if (!set.has(pr.client.id)) set.set(pr.client.id, pr.client);
+    }
+    return Array.from(set.values());
+  }, [projectRepos]);
+
+  // ─── Workspace path for selected repo ───────────────────────
+  const currentWorkspace = useMemo(() => {
+    if (!selectedRepo) return undefined;
+    return projectRepos.find(pr => pr.repo.name === selectedRepo)?.repo.path;
+  }, [selectedRepo, projectRepos]);
+
+  // ─── Selected project info ──────────────────────────────────
+  const currentProject = useMemo(() => {
+    if (!selectedProject) return null;
+    return projectRepos.find(pr => pr.project.id === selectedProject);
+  }, [selectedProject, projectRepos]);
+
+  // ─── Load GitHub repos ──────────────────────────────────────
+  const loadGithubRepos = useCallback(async () => {
+    let apiRepos: GithubRepo[] = [];
+    try {
+      const res = await fetch("/api/github/repos");
+      if (res.ok) {
+        const data = await res.json();
+        apiRepos = data.repositories || [];
+      }
+    } catch { /* API might not be configured */ }
+
+    const localRepos = buildReposFromClients();
+    const apiNames = new Set(apiRepos.map(r => r.full_name));
+    const merged = [
+      ...apiRepos,
+      ...localRepos.filter(r => !apiNames.has(r.full_name)),
+    ];
+    setRepos(merged);
+  }, []);
+
   const buildReposFromClients = useCallback((): GithubRepo[] => {
     seedMockClients();
     const projects = getAllProjects();
@@ -90,6 +198,8 @@ export function PiHarness() {
             open_issues_count: 0,
             pushed_at: new Date().toISOString(),
             status: 'connected',
+            clientId: client.id,
+            project: { id: project.id, name: project.name },
           });
         }
       }
@@ -97,33 +207,7 @@ export function PiHarness() {
     return repos;
   }, []);
 
-  // ─── Load GitHub repos ──────────────────────────────────────
-  const loadGithubRepos = useCallback(async () => {
-    // First try the API route (GitHub API)
-    let apiRepos: GithubRepo[] = [];
-    try {
-      const res = await fetch("/api/github/repos");
-      if (res.ok) {
-        const data = await res.json();
-        apiRepos = data.repositories || [];
-      }
-    } catch {
-      // API might not be configured
-    }
-
-    // Always include local client repos as fallback
-    const localRepos = buildReposFromClients();
-
-    // Merge: prefer API data, include local repos not in API
-    const apiNames = new Set(apiRepos.map(r => r.full_name));
-    const merged = [
-      ...apiRepos,
-      ...localRepos.filter(r => !apiNames.has(r.full_name)),
-    ];
-    setRepos(merged);
-  }, [buildReposFromClients]);
-
-  // ─── Check all project repos connectivity ────────────────────
+  // ─── Check all repos connectivity ────────────────────────────
   const checkAllRepos = useCallback(async () => {
     setCheckingRepos(true);
     const updated = [...repos];
@@ -151,7 +235,7 @@ export function PiHarness() {
     if (p.includes("git diff") || p.includes("show changes")) return "git diff --stat";
     if (p.includes("git branch")) return "git branch -v";
     if (p.includes("add all") || p.includes("stage all")) return "git add -A";
-    if (p.includes("pull") && p.includes("git")) return "git pull";
+    if (p.includes("pull") && p.includes("git")) return "git pull --rebase";
     if (p.includes("fetch")) return "git fetch --all --prune";
 
     // File operations
@@ -187,6 +271,7 @@ export function PiHarness() {
     const command = parsePromptToCommand(prompt);
     const processId = `proc_${Date.now()}`;
     const startMs = Date.now();
+    const targetCwd = cwd || currentWorkspace;
 
     const process: RunningProcess = {
       id: processId,
@@ -195,17 +280,18 @@ export function PiHarness() {
       startedAt: startMs,
       status: "running",
       output: [],
+      repo: selectedRepo || undefined,
     };
 
     setRunningProcesses(prev => [process, ...prev]);
     setIsProcessing(true);
-    setTerminalOutput(prev => [...prev, `[$(date '+%H:%M:%S')] Executing: ${command}`]);
+    setTerminalOutput(prev => [...prev, `[${format(new Date(), 'HH:mm:ss')}] ${targetCwd ? `cd ${targetCwd}` : ''} && ${command}`]);
 
     try {
       const res = await fetch("/api/workspace/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command, cwd }),
+        body: JSON.stringify({ command, cwd: targetCwd }),
       });
 
       if (!res.ok) {
@@ -222,6 +308,7 @@ export function PiHarness() {
           duration: endMs - startMs,
           status: "failed",
           outputPreview: err.error || "Command failed",
+          repo: selectedRepo || undefined,
         }, ...prev]);
         setTerminalOutput(prev => [...prev, `❌ ${err.error || "Command failed"}`]);
         setIsProcessing(false);
@@ -293,6 +380,7 @@ export function PiHarness() {
         duration,
         status: completed ? "success" : "failed",
         outputPreview: outputLines.slice(-3).join("\n") || (completed ? "Completed" : `Exit code ${exitCode}`),
+        repo: selectedRepo || undefined,
       }, ...prev]);
 
       if (completed) {
@@ -313,13 +401,14 @@ export function PiHarness() {
         duration: endMs - startMs,
         status: "failed",
         outputPreview: err.message,
+        repo: selectedRepo || undefined,
       }, ...prev]);
       setTerminalOutput(prev => [...prev, `❌ ${err.message}`]);
     }
 
     setIsProcessing(false);
     setPromptInput("");
-  }, []);
+  }, [currentWorkspace, selectedRepo]);
 
   // ─── Handle keyboard ────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -359,10 +448,10 @@ export function PiHarness() {
     { label: "List Files", icon: "folder", prompt: "list files" },
     { label: "Type Check", icon: "code", prompt: "run type check" },
     { label: "Build", icon: "build", prompt: "run build" },
-    { label: "Disk Usage", icon: "storage", prompt: "check disk usage" },
-    { label: "Git Remote", icon: "cloud", prompt: "show git remote" },
+    { label: "Git Diff", icon: "compare_arrows", prompt: "show changes" },
+    { label: "Git Pull", icon: "sync", prompt: "git pull" },
+    { label: "Remote URL", icon: "cloud", prompt: "show git remote" },
     { label: "Big Files", icon: "stack", prompt: "find biggest files" },
-    { label: "Changed Files", icon: "update", prompt: "show changes" },
   ];
 
   // ─── Tabs ───────────────────────────────────────────────────
@@ -371,6 +460,13 @@ export function PiHarness() {
     { key: "processes", label: "Processes", icon: "settings_motion_mode", badge: activeProcesses.length || undefined },
     { key: "github", label: "GitHub", icon: "code", badge: repos.length || undefined },
   ];
+
+  // ─── Select a repo (auto-selects project/client) ────────────
+  const selectRepo = (pr: ProjectRepo) => {
+    setSelectedClient(pr.client.id);
+    setSelectedProject(pr.project.id);
+    setSelectedRepo(pr.repo.name);
+  };
 
   return (
     <Card className="overflow-hidden">
@@ -387,7 +483,14 @@ export function PiHarness() {
               </Badge>
             </CardTitle>
             <CardDescription>
-              Run commands, manage processes, and integrate with GitHub
+              {selectedProject ? (
+                <span className="font-medium text-md-primary">
+                  {currentProject?.client.name} → {currentProject?.project.name}
+                  {selectedRepo && ` (${selectedRepo})`}
+                </span>
+              ) : (
+                "Select a project and repo to run commands in"
+              )}
               {activeProcesses.length > 0 && (
                 <span className="text-md-on-error ml-1 animate-pulse">
                   · {activeProcesses.length} running
@@ -411,6 +514,65 @@ export function PiHarness() {
       </CardHeader>
 
       <CardContent>
+        {/* ─── Project/Repo Selector ──────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-xl bg-md-surface-container-low">
+          <span className="material-symbols-rounded text-18 text-md-on-surface-variant shrink-0">business</span>
+          <select
+            value={selectedClient || ""}
+            onChange={e => {
+              setSelectedClient(e.target.value || null);
+              setSelectedProject(null);
+              setSelectedRepo(null);
+            }}
+            className="flex-1 min-w-[150px] rounded-lg px-3 py-2 text-sm bg-transparent text-md-on-surface border border-md-outline/50 focus:border-md-primary focus:ring-1 focus:ring-md-primary outline-none transition-colors"
+          >
+            <option value="">All Clients</option>
+            {uniqueClients.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
+          <span className="material-symbols-rounded text-18 text-md-on-surface-variant shrink-0">workspace_premium</span>
+          <select
+            value={selectedProject || ""}
+            onChange={e => {
+              setSelectedProject(e.target.value || null);
+              setSelectedRepo(null);
+            }}
+            disabled={!selectedClient}
+            className="flex-1 min-w-[150px] rounded-lg px-3 py-2 text-sm bg-transparent text-md-on-surface border border-md-outline/50 focus:border-md-primary focus:ring-1 focus:ring-md-primary outline-none transition-colors disabled:opacity-50"
+          >
+            <option value="">Select Project</option>
+            {availableProjects.map(p => (
+              <option key={p.project.id} value={p.project.id}>{p.project.name}</option>
+            ))}
+          </select>
+
+          <span className="material-symbols-rounded text-18 text-md-on-surface-variant shrink-0">code</span>
+          <select
+            value={selectedRepo || ""}
+            onChange={e => setSelectedRepo(e.target.value || null)}
+            disabled={!selectedProject}
+            className="flex-1 min-w-[150px] rounded-lg px-3 py-2 text-sm bg-transparent text-md-on-surface border border-md-outline/50 focus:border-md-primary focus:ring-1 focus:ring-md-primary outline-none transition-colors disabled:opacity-50"
+          >
+            <option value="">Select Repo</option>
+            {availableRepos.map(r => (
+              <option key={r.repo.name} value={r.repo.name}>{r.repo.name}</option>
+            ))}
+          </select>
+
+          {selectedProject && (
+            <Badge variant="secondary-tonal" className="shrink-0">
+              {currentProject?.client.name} / {currentProject?.project.name}
+            </Badge>
+          )}
+          {selectedRepo && (
+            <Badge variant="primary-tonal" className="shrink-0">
+              {currentWorkspace}
+            </Badge>
+          )}
+        </div>
+
         {/* ─── Tabs ──────────────────────────────────────────── */}
         <div className="flex gap-1 p-1 bg-md-surface-container-low rounded-xl mb-4">
           {tabs.map(tab => (
@@ -449,6 +611,7 @@ export function PiHarness() {
                         <p className="text-label-medium text-md-on-surface truncate">{proc.label}</p>
                         <p className="text-body-small text-md-on-surface-variant font-mono">{proc.command}</p>
                       </div>
+                      {proc.repo && <Badge variant="secondary-tonal">{proc.repo}</Badge>}
                       <Badge variant="primary-tonal">
                         {formatDuration(elapsed)}
                       </Badge>
@@ -467,7 +630,7 @@ export function PiHarness() {
               {terminalOutput.length === 0 ? (
                 <div className="text-[#565f89] text-center py-8">
                   <span className="material-symbols-rounded text-48">api</span>
-                  <p className="mt-2">Type a command or use quick actions below</p>
+                  <p className="mt-2">Select a project &amp; repo, then run commands</p>
                   <p className="text-xs mt-1">Try: "git status", "list files", "build", "type check"</p>
                 </div>
               ) : (
@@ -503,14 +666,17 @@ export function PiHarness() {
                 onChange={e => setPromptInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isProcessing}
-                placeholder="Describe what you want to do... (e.g. 'git status', 'build', 'list files')"
+                placeholder={selectedRepo
+                  ? `Run command in ${selectedRepo}... (e.g. "git status", "build")`
+                  : "Select a repo first, then describe what to do..."
+                }
                 className="flex-1"
                 autoFocus
               />
               <Button
                 variant="filled"
                 onClick={() => executeCommand(promptInput)}
-                disabled={isProcessing || !promptInput.trim()}
+                disabled={isProcessing || !promptInput.trim() || !selectedRepo}
               >
                 {isProcessing ? (
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-r-transparent" />
@@ -532,7 +698,7 @@ export function PiHarness() {
                       setPromptInput(action.prompt);
                       executeCommand(action.prompt);
                     }}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !selectedRepo}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium bg-md-surface-container-high text-md-on-surface hover:bg-md-primary hover:text-md-on-primary transition-colors disabled:opacity-50"
                   >
                     <span className="material-symbols-rounded text-14">{action.icon}</span>
@@ -560,6 +726,7 @@ export function PiHarness() {
                           <p className="text-body-small text-md-on-surface-variant font-mono truncate">{h.outputPreview}</p>
                         )}
                       </div>
+                      {h.repo && <Badge variant="secondary-tonal">{h.repo}</Badge>}
                       {h.duration && (
                         <span className="text-body-small text-md-on-surface-variant shrink-0">
                           {formatDuration(h.duration)}
@@ -595,6 +762,7 @@ export function PiHarness() {
                         <div className="flex items-center gap-3 mb-2">
                           <span className="h-3 w-3 rounded-full bg-md-primary animate-pulse" />
                           <p className="text-label-large text-md-on-surface flex-1">{proc.label}</p>
+                          {proc.repo && <Badge variant="secondary-tonal">{proc.repo}</Badge>}
                           <Badge variant="primary-tonal" className="font-mono">
                             {formatDuration(elapsed)}
                           </Badge>
@@ -632,6 +800,7 @@ export function PiHarness() {
                         <p className="text-body-medium text-md-on-surface truncate">{proc.label}</p>
                         <p className="text-body-small text-md-on-surface-variant font-mono truncate">{proc.command}</p>
                       </div>
+                      {proc.repo && <Badge variant="secondary-tonal">{proc.repo}</Badge>}
                       <span className="text-body-small text-md-on-surface-variant shrink-0">
                         {formatDuration(Date.now() - proc.startedAt)}
                       </span>
@@ -649,7 +818,7 @@ export function PiHarness() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <p className="text-label-medium text-md-on-surface-variant font-medium">
-                Connected Repositories ({repos.length})
+                Repositories ({repos.length})
               </p>
               <div className="flex gap-2">
                 <Button variant="text" size="sm" onClick={loadGithubRepos}>
@@ -663,80 +832,91 @@ export function PiHarness() {
               </div>
             </div>
 
-            {/* Repo list */}
-            {repos.length === 0 ? (
+            {/* Repo list grouped by project */}
+            {projectRepos.length === 0 ? (
               <div className="text-center py-12 bg-md-surface-container-low rounded-xl">
                 <span className="material-symbols-rounded text-48 text-md-on-surface-variant/40">code</span>
-                <p className="text-body-large text-md-on-surface-variant mt-4">No GitHub repos configured</p>
-                <p className="text-body-small text-md-on-surface-variant mt-1">
-                  Configure GitHub in Settings to connect repositories
-                </p>
+                <p className="text-body-large text-md-on-surface-variant mt-4">No repos configured</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {repos.map(repo => (
-                  <div key={repo.full_name} className="flex items-center gap-3 bg-md-surface-container-low rounded-xl p-4 hover:bg-md-surface-container transition-colors">
-                    <span className="material-symbols-rounded text-24 text-md-primary shrink-0">code</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={repo.html_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-label-large text-md-primary hover:underline truncate"
-                        >
-                          {repo.name}
-                        </a>
-                        <Badge
-                          variant={
-                            repo.status === "connected" ? "secondary-tonal" :
-                            repo.status === "error" ? "error-tonal" :
-                            "secondary-outlined"
-                          }
-                          className="shrink-0"
-                        >
-                          {repo.status === "connected" ? (
-                            <>
-                              <span className="material-symbols-rounded text-10 align-middle">check</span>
-                              Connected
-                            </>
-                          ) : repo.status === "error" ? (
-                            <>
-                              <span className="material-symbols-rounded text-10 align-middle">error</span>
-                              Error
-                            </>
-                          ) : (
-                            "Checking..."
-                          )}
-                        </Badge>
+              <div className="space-y-4">
+                {Array.from(reposByProject.entries()).map(([key, prs]) => {
+                  const { client, project } = prs[0];
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="secondary-tonal">{client.name}</Badge>
+                        <span className="text-label-large text-md-on-surface">{project.name}</span>
+                        <Badge variant="secondary-outlined">{prs.length} repo{prs.length > 1 ? 's' : ''}</Badge>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-body-small text-md-on-surface-variant">
-                        <span>{repo.default_branch}</span>
-                        <span>·</span>
-                        <span>{repo.open_issues_count} issues</span>
-                        <span>·</span>
-                        <span>Updated {repo.pushed_at ? format(new Date(repo.pushed_at), 'MMM d, yyyy') : "unknown"}</span>
+                      <div className="space-y-2">
+                        {prs.map(pr => (
+                          <div
+                            key={pr.repo.name}
+                            className={`flex items-center gap-3 rounded-xl p-4 transition-colors cursor-pointer ${
+                              selectedRepo === pr.repo.name
+                                ? "bg-md-primary-container ring-1 ring-md-primary"
+                                : "bg-md-surface-container-low hover:bg-md-surface-container"
+                            }`}
+                            onClick={() => {
+                              selectRepo(pr);
+                              setActiveTab("command");
+                            }}
+                          >
+                            <span className="material-symbols-rounded text-24 text-md-primary shrink-0">code</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={`https://github.com/${pr.project.githubRepos?.[prs.indexOf(pr)]?.split('/').slice(0, 2).join('/')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-label-large text-md-primary hover:underline truncate"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  {pr.repo.name}
+                                </a>
+                                <Badge
+                                  variant="secondary-tonal"
+                                >
+                                  <span className="material-symbols-rounded text-10 align-middle">check</span>
+                                  Connected
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-body-small text-md-on-surface-variant">
+                                <span>{pr.repo.path}</span>
+                                {project.githubRepos && project.githubRepos.length > 0 && (
+                                  <span className="truncate">
+                                    {project.githubRepos.find(r => r.split('/')[1] === pr.repo.name)?.split('/')[0]}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <Button variant="text" size="sm" onClick={e => {
+                                e.stopPropagation();
+                                selectRepo(pr);
+                                setActiveTab("command");
+                                setPromptInput("git pull");
+                                executeCommand("git pull", pr.repo.path);
+                              }}>
+                                <span className="material-symbols-rounded text-16">sync</span>
+                              </Button>
+                              <a
+                                href={`https://github.com/${pr.project.githubRepos?.find(r => r.split('/')[1] === pr.repo.name)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 rounded-lg hover:bg-md-on-surface/5 text-md-on-surface-variant hover:text-md-on-surface transition-colors"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <span className="material-symbols-rounded text-18">open_in_new</span>
+                              </a>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button variant="text" size="sm" onClick={() => {
-                        setPromptInput(`pull latest from ${repo.name}`);
-                        setActiveTab("command");
-                        executeCommand(`git -C /workspace/${repo.name} pull --rebase`);
-                      }}>
-                        <span className="material-symbols-rounded text-16">sync</span>
-                      </Button>
-                      <a
-                        href={repo.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 rounded-lg hover:bg-md-on-surface/5 text-md-on-surface-variant hover:text-md-on-surface transition-colors"
-                      >
-                        <span className="material-symbols-rounded text-18">open_in_new</span>
-                      </a>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -756,7 +936,7 @@ export function PiHarness() {
                       setActiveTab("command");
                       executeCommand(action.prompt);
                     }}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !selectedRepo}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium bg-md-surface-container-high text-md-on-surface hover:bg-md-primary hover:text-md-on-primary transition-colors disabled:opacity-50"
                   >
                     <span className="material-symbols-rounded text-14">{action.icon}</span>

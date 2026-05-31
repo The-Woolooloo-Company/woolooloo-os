@@ -75,8 +75,10 @@ export function PiHarness() {
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
 
   // ─── Load all data on mount ─────────────────────────────────
+  const [dataLoaded, setDataLoaded] = useState(false);
   useEffect(() => {
     seedMockClients();
+    setDataLoaded(true); // trigger recomputation of projectRepos
     loadGithubRepos();
   }, []);
 
@@ -89,25 +91,31 @@ export function PiHarness() {
 
   // ─── Build repos from clients data ──────────────────────────
   const projectRepos = useMemo((): ProjectRepo[] => {
-    seedMockClients();
+    if (!dataLoaded) return [];
     const projects = getAllProjects();
     const results: ProjectRepo[] = [];
+    const seen = new Set<string>();
 
     for (const { project, client } of projects) {
       const repoNames = project.githubRepos || [];
       for (const repoName of repoNames) {
+        const repoShort = repoName.split('/')[1] || repoName;
+        // Deduplicate: same repo across projects only shows once
+        const dedupKey = `${client.id}::${project.id}::${repoName}`;
+        if (seen.has(dedupKey)) continue;
+        seen.add(dedupKey);
         results.push({
           client,
           project,
           repo: {
-            name: repoName.split('/')[1] || repoName,
-            path: `/workspace/${repoName.split('/')[1] || repoName}`,
+            name: repoShort,
+            path: `/workspace/${repoShort}`,
           },
         });
       }
     }
     return results;
-  }, []);
+  }, [dataLoaded]);
 
   // ─── Group repos by project ─────────────────────────────────
   const reposByProject = useMemo(() => {

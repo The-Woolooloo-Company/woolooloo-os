@@ -112,10 +112,16 @@ export async function syncStaffFromApis(): Promise<StaffMember[]> {
     console.warn('Failed to sync Linear users:', err);
   }
 
-  // 3. Fetch from Clockify
+  // 3. Fetch from Clockify API route (server-side, avoids CORS)
   try {
-    const clockify = await import('@/lib/clockify');
-    const clockifyUsers = await clockify.getUsers();
+    const res = await fetch('/api/clockify?users=1');
+    const data = await res.json();
+    const clockifyUsers = (data.users || []).map((u: any) => ({
+      id: u.id || u.userId,
+      userName: u.userName || u.name,
+      userEmail: u.userEmail || u.email || '',
+      membershipStatus: u.membershipStatus || 'ACTIVE',
+    }));
     for (const user of clockifyUsers) {
       const k = keyFor(user.userName);
       let matched = staffMap.get(k);

@@ -14,21 +14,8 @@ const KEY = 'woolooloo-staging';
 const DOM = 'woolooloo.tech';
 const API = 'http://192.168.1.72:9091';
 
-// Known active deployments (seed if localStorage is empty)
-const KNOWN_DEPLOYMENTS: Entry[] = [
-  {
-    projectId: 'woolooloo-os', projectName: 'Woolooloo OS', clientName: 'Woolooloo',
-    subdomain: 'os', url: `https://os.${DOM}`, status: 'live',
-    tunnel: false, target: '192.168.1.161', repo: 'The-Woolooloo-Company/woolooloo-os', port: 3000,
-  },
-  {
-    projectId: 'nc-pam', projectName: 'NCM Spectrum', clientName: 'Netcore',
-    subdomain: 'ncm', url: `https://ncm.${DOM}`, status: 'live',
-    tunnel: false, target: '192.168.1.161', repo: 'The-Woolooloo-Company/ncm-spectrum', port: 3101,
-  },
-];
-
 interface Entry {
+  id: string;
   projectId: string;
   projectName: string;
   clientName: string;
@@ -41,6 +28,20 @@ interface Entry {
   repo: string;
   port: number;
 }
+
+// Known active deployments (seed if localStorage is empty)
+const KNOWN_DEPLOYMENTS: Entry[] = [
+  {
+    id: 'deploy-woolooloo-os', projectId: 'woolooloo-os', projectName: 'Woolooloo OS', clientName: 'Woolooloo',
+    subdomain: 'os', url: `https://os.${DOM}`, status: 'live',
+    tunnel: false, target: '192.168.1.161', repo: 'The-Woolooloo-Company/woolooloo-os', port: 3000,
+  },
+  {
+    id: 'deploy-ncm', projectId: 'nc-pam', projectName: 'NCM Spectrum', clientName: 'Netcore',
+    subdomain: 'ncm', url: `https://ncm.${DOM}`, status: 'live',
+    tunnel: false, target: '192.168.1.161', repo: 'The-Woolooloo-Company/ncm-spectrum', port: 3101,
+  },
+];
 
 function load(): Entry[] {
   if (typeof window === 'undefined') return [];
@@ -61,11 +62,15 @@ export default function Page() {
   const { showToast } = useToast();
   const [items, setItems] = useState<{ project: ClientProject; client: Client }[]>([]);
   const [entries, setData] = useState<Entry[]>([]);
-  const [editItem, setEditItem] = useState<{ project: ClientProject; client: Client } | null>(null);
+
+  // Edit state
+  const [editProject, setEditProject] = useState<{ project: ClientProject; client: Client } | null>(null);
+  const [editEntryId, setEditEntryId] = useState<string | null>(null); // null = new deployment
   const [sub, setSub] = useState('');
-  const [tun, setTun] = useState(true);
+  const [tun, setTun] = useState(false);
   const [target, setTarget] = useState('192.168.1.161');
   const [repo, setRepo] = useState('');
+  const [port, setPort] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [cfStatus, setCfStatus] = useState<'checking' | 'ok' | 'down'>('checking');
 
@@ -83,38 +88,62 @@ export default function Page() {
     } catch { setCfStatus('down'); }
   };
 
-  const findEntry = (id: string) => entries.find(e => e.projectId === id);
+  // Find all entries for a project
+  const findEntries = (projectId: string) => entries.filter(e => e.projectId === projectId);
 
-  const openEdit = (p: ClientProject, c: Client) => {
-    setEditItem({ project: p, client: c });
-    const ex = findEntry(p.id);
-    setSub(ex?.subdomain || p.name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8));
-    setTun(ex?.tunnel ?? true);
-    setTarget(ex?.target || '192.168.1.161');
-    setRepo(ex?.repo || (p.githubRepos?.[0] || ''));
+  // Open modal for new deployment on a project
+  const openNew = (p: ClientProject, c: Client) => {
+    setEditProject({ project: p, client: c });
+    setEditEntryId(null);
+    setSub(p.name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 10));
+    setTun(false);
+    setTarget('192.168.1.161');
+    setRepo(p.githubRepos?.[0] || '');
+    setPort('');
   };
 
+  // Open modal to edit existing deployment
+  const openEdit = (entry: Entry, p: ClientProject, c: Client) => {
+    setEditProject({ project: p, client: c });
+    setEditEntryId(entry.id);
+    setSub(entry.subdomain);
+    setTun(entry.tunnel);
+    setTarget(entry.target);
+    setRepo(entry.repo);
+    setPort(String(entry.port || ''));
+  };
+
+  // Save deployment (new or update)
   const doSave = () => {
-    if (!editItem) return;
-    const { project, client } = editItem;
+    if (!editProject) return;
+    const { project, client } = editProject;
     const url = `https://${sub}.${DOM}`;
-    const ex = findEntry(project.id);
     const entry: Entry = {
+      id: editEntryId || `deploy-${Date.now()}`,
       projectId: project.id, projectName: project.name, clientName: client.name,
-      subdomain: sub, url, status: ex?.status || 'idle', lastDeploy: ex?.lastDeploy,
-      tunnel: tun, target: target, repo: repo, port: ex?.port || 0,
+      subdomain: sub, url,
+      status: editEntryId ? entries.find(e => e.id === editEntryId)?.status || 'idle' : 'idle',
+      lastDeploy: editEntryId ? entries.find(e => e.id === editEntryId)?.lastDeploy : undefined,
+      tunnel: tun, target: target, repo: repo, port: port ? parseInt(port) : 0,
     };
-    const updated = entries.filter(e => e.projectId !== project.id);
-    updated.push(entry);
+
+    let updated: Entry[];
+    if (editEntryId) {
+      // Update existing
+      updated = entries.map(e => e.id === editEntryId ? entry : e);
+    } else {
+      // Add new
+      updated = [...entries, entry];
+    }
     setData(updated); save(updated);
-    setEditItem(null);
-    showToast(`${project.name} staged → ${url}`, "success");
+    setEditProject(null); setEditEntryId(null);
+    showToast(`${project.name}: ${url}`, "success");
   };
 
   const doDeploy = async (entry: Entry) => {
-    setBusy(entry.projectId);
-    setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'deploying' } : x));
-    showToast(`Deploying ${entry.projectName} (${entry.repo})...`, "info");
+    setBusy(entry.id);
+    setData(prev => prev.map(x => x.id === entry.id ? { ...x, status: 'deploying' as const } : x));
+    showToast(`Deploying ${entry.subdomain}.${DOM}...`, "info");
 
     try {
       const res = await fetch(`${API}/deploy`, {
@@ -130,23 +159,17 @@ export default function Page() {
       const data = await res.json();
 
       if (data.ok) {
-        setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'live', lastDeploy: new Date().toISOString(), port: data.port } : x));
-        showToast(`${entry.projectName} deployed!`, "success");
+        setData(prev => prev.map(x => x.id === entry.id ? { ...x, status: 'live' as const, lastDeploy: new Date().toISOString(), port: data.port || x.port } : x));
+        showToast(`${entry.subdomain}.${DOM} deployed!`, "success");
       } else {
         throw new Error(data.error || 'Deploy failed');
       }
     } catch (e: any) {
-      setData(prev => prev.map(x => x.projectId === entry.projectId ? { ...x, status: 'error' } : x));
+      setData(prev => prev.map(x => x.id === entry.id ? { ...x, status: 'error' as const } : x));
       showToast(`Deploy failed: ${e.message}`, "error");
     } finally {
       setBusy(null);
     }
-  };
-
-  const doTest = (url: string) => {
-    // Open in new tab so browser resolves Cloudflare DNS
-    window.open(url, '_blank');
-    showToast(`Opened ${url} in new tab — check status there`, "info");
   };
 
   const doUndeploy = async (entry: Entry) => {
@@ -158,8 +181,8 @@ export default function Page() {
       });
       const data = await res.json();
       if (data.ok) {
-        setData(prev => prev.filter(e => e.projectId !== entry.projectId));
-        showToast(`${entry.projectName} removed`, "success");
+        setData(prev => prev.filter(e => e.id !== entry.id));
+        showToast(`${entry.subdomain}.${DOM} removed`, "success");
       }
     } catch (e: any) { showToast(`Undeploy failed: ${e.message}`, "error"); }
   };
@@ -188,7 +211,7 @@ export default function Page() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
             { label: 'Projects', value: items.length },
-            { label: 'Configured', value: entries.length },
+            { label: 'Deployments', value: entries.length },
             { label: 'Live', value: entries.filter(e => e.status === 'live').length },
             { label: 'Tunnels', value: entries.filter(e => e.tunnel).length },
           ].map((s, i) => (
@@ -202,41 +225,57 @@ export default function Page() {
         {/* Projects */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map(({ project, client }) => {
-            const entry = findEntry(project.id);
+            const projectEntries = findEntries(project.id);
             return (
               <Card key={project.id} className="hover:shadow-md-1 transition-shadow">
-                <CardHeader>
+                <CardHeader className="pb-2">
                   <CardTitle className="text-title-large">{project.name}</CardTitle>
                   <CardDescription>{client.name}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {entry ? (
-                    <div className="space-y-3">
+                  {/* Existing deployments */}
+                  {projectEntries.map(entry => (
+                    <div key={entry.id} className={`space-y-2 ${projectEntries.length > 1 ? 'mb-3 pb-3 border-b border-md-outline-variant/50' : ''}`}>
                       <div className="flex items-center justify-between">
-                        <a href={entry.url} target="_blank" rel="noreferrer" className="text-body-medium text-md-primary hover:underline truncate">{entry.url}</a>
-                        <Badge variant={entry.status === 'live' ? 'success-tonal' : entry.status === 'deploying' ? 'warning-tonal' : 'secondary-tonal'}>{entry.status}</Badge>
+                        <a href={entry.url} target="_blank" rel="noreferrer" className="text-body-medium text-md-primary hover:underline truncate">
+                          {entry.subdomain}.{DOM}
+                        </a>
+                        <Badge variant={entry.status === 'live' ? 'success-tonal' : entry.status === 'deploying' ? 'warning-tonal' : entry.status === 'error' ? 'error-tonal' : 'secondary-tonal'}>
+                          {entry.status}
+                        </Badge>
                       </div>
                       <div className="flex gap-1 flex-wrap">
                         {entry.tunnel && <Badge variant="primary-tonal"><span className="material-symbols-rounded text-14 mr-1">cloud</span>Tunnel</Badge>}
-                        <Badge variant="secondary-outlined">→ {entry.target}:{entry.port}</Badge>
+                        {entry.port ? <Badge variant="secondary-outlined">→ {entry.target}:{entry.port}</Badge> : <Badge variant="secondary-outlined">→ {entry.target}</Badge>}
                         {entry.repo && <Badge variant="secondary-tonal"><span className="material-symbols-rounded text-14 mr-1">code</span>{entry.repo.split('/').pop()}</Badge>}
                       </div>
                       {entry.lastDeploy && <p className="text-body-small text-md-on-surface-variant">Deployed: {new Date(entry.lastDeploy).toLocaleString()}</p>}
                       <div className="flex gap-2 flex-wrap">
-                        <Button variant="tonal" size="sm" onClick={() => doDeploy(entry)} disabled={busy === entry.projectId}>
+                        <Button variant="tonal" size="sm" onClick={() => doDeploy(entry)} disabled={busy === entry.id}>
                           <span className="material-symbols-rounded text-16 mr-1">rocket_launch</span>
-                          {busy === entry.projectId ? 'Deploying...' : 'Deploy'}
+                          {busy === entry.id ? 'Deploying...' : 'Deploy'}
                         </Button>
-                        <Button variant="text" size="sm" onClick={() => doTest(entry.url)}><span className="material-symbols-rounded text-16 mr-1">science</span>Test</Button>
-                        <Button variant="text" size="sm" onClick={() => openEdit(project, client)}><span className="material-symbols-rounded text-16 mr-1">edit</span></Button>
-                        <Button variant="text" size="sm" className="text-md-error" onClick={() => doUndeploy(entry)}><span className="material-symbols-rounded text-16 mr-1">delete</span></Button>
+                        <Button variant="text" size="sm" onClick={() => window.open(entry.url, '_blank')}>
+                          <span className="material-symbols-rounded text-16 mr-1">science</span>Test
+                        </Button>
+                        <Button variant="text" size="sm" onClick={() => openEdit(entry, project, client)}>
+                          <span className="material-symbols-rounded text-16 mr-1">edit</span>
+                        </Button>
+                        <Button variant="text" size="sm" className="text-md-error" onClick={() => doUndeploy(entry)}>
+                          <span className="material-symbols-rounded text-16 mr-1">delete</span>
+                        </Button>
                       </div>
                     </div>
-                  ) : (
-                    <Button variant="tonal" className="w-full" onClick={() => openEdit(project, client)}>
-                      <span className="material-symbols-rounded text-18 mr-1">tune</span>Configure
+                  ))}
+
+                  {/* Add new deployment */}
+                  <div className="flex gap-2 mt-2">
+                    <Button variant="text" className="w-full" onClick={() => openNew(project, client)}>
+                      <span className="material-symbols-rounded text-18 mr-1">add_circle</span>
+                      Add Deployment
                     </Button>
-                  )}
+                  </div>
+
                   <div className="mt-3 pt-3 border-t border-md-outline-variant/50">
                     <Link href={`/clients/${client.id}/projects/${project.id}`} className="text-body-small text-md-primary hover:underline">Project Details →</Link>
                   </div>
@@ -247,19 +286,19 @@ export default function Page() {
         </div>
 
         {/* Modal */}
-        {editItem && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEditItem(null)}>
+        {editProject && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setEditProject(null); setEditEntryId(null); }}>
             <Card className="w-[500px] mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <CardHeader>
-                <CardTitle>Configure Staging</CardTitle>
-                <CardDescription>{editItem.project.name} — {editItem.client.name}</CardDescription>
+                <CardTitle>{editEntryId ? 'Edit Deployment' : 'Add Deployment'}</CardTitle>
+                <CardDescription>{editProject.project.name} — {editProject.client.name}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Subdomain */}
                 <div>
                   <label className="text-label-medium text-md-on-surface-variant block mb-1">Subdomain</label>
                   <div className="flex items-center gap-2">
-                    <Input value={sub} onChange={e => setSub(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="ncm" className="flex-1" />
+                    <Input value={sub} onChange={e => setSub(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="os" className="flex-1" />
                     <span className="text-body-medium text-md-on-surface-variant shrink-0">.{DOM}</span>
                   </div>
                   <p className="text-body-small text-md-on-surface-variant mt-1">
@@ -276,10 +315,16 @@ export default function Page() {
                     className="w-full p-3 rounded-xl bg-md-surface-container/50 border border-md-outline-variant text-md-on-surface focus:border-md-primary focus:outline-none"
                   >
                     <option value="">Select a repo...</option>
-                    {(editItem.project.githubRepos || []).map(r => (
+                    {(editProject.project.githubRepos || []).map(r => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* Port */}
+                <div>
+                  <label className="text-label-medium text-md-on-surface-variant block mb-1">Port (optional)</label>
+                  <Input value={port} onChange={e => setPort(e.target.value.replace(/\D/g, ''))} placeholder="3000" type="text" />
                 </div>
 
                 {/* Target */}
@@ -322,8 +367,11 @@ export default function Page() {
 
                 {/* Actions */}
                 <div className="flex gap-2 justify-end pt-2">
-                  <Button variant="text" onClick={() => setEditItem(null)}>Cancel</Button>
-                  <Button onClick={doSave} disabled={!repo}><span className="material-symbols-rounded text-18 mr-1">save</span>Save</Button>
+                  <Button variant="text" onClick={() => { setEditProject(null); setEditEntryId(null); }}>Cancel</Button>
+                  <Button onClick={doSave} disabled={!sub || !repo}>
+                    <span className="material-symbols-rounded text-18 mr-1">save</span>
+                    {editEntryId ? 'Update' : 'Add'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

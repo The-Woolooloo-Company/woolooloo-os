@@ -14,6 +14,20 @@ const KEY = 'woolooloo-staging';
 const DOM = 'woolooloo.tech';
 const API = 'http://192.168.1.72:9091';
 
+// Known active deployments (seed if localStorage is empty)
+const KNOWN_DEPLOYMENTS: Entry[] = [
+  {
+    projectId: 'woolooloo-os', projectName: 'Woolooloo OS', clientName: 'Woolooloo',
+    subdomain: 'os', url: `https://os.${DOM}`, status: 'live',
+    tunnel: false, target: '192.168.1.161', repo: 'The-Woolooloo-Company/woolooloo-os', port: 3000,
+  },
+  {
+    projectId: 'nc-pam', projectName: 'NCM Spectrum', clientName: 'Netcore',
+    subdomain: 'ncm', url: `https://ncm.${DOM}`, status: 'live',
+    tunnel: false, target: '192.168.1.161', repo: 'The-Woolooloo-Company/ncm-spectrum', port: 3101,
+  },
+];
+
 interface Entry {
   projectId: string;
   projectName: string;
@@ -30,7 +44,16 @@ interface Entry {
 
 function load(): Entry[] {
   if (typeof window === 'undefined') return [];
-  try { const d = localStorage.getItem(KEY); return d ? JSON.parse(d) : []; } catch { return []; }
+  try {
+    const d = localStorage.getItem(KEY);
+    const saved = d ? JSON.parse(d) : [];
+    // If localStorage is empty, seed with known deployments
+    if (saved.length === 0 && KNOWN_DEPLOYMENTS.length > 0) {
+      save(KNOWN_DEPLOYMENTS);
+      return KNOWN_DEPLOYMENTS;
+    }
+    return saved;
+  } catch { return []; }
 }
 function save(d: Entry[]) { if (typeof window !== 'undefined') localStorage.setItem(KEY, JSON.stringify(d)); }
 

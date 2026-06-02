@@ -161,6 +161,55 @@ export default function Page() {
           </div>
         </div>
 
+        {/* Current Deployments */}
+        <div className="mb-8">
+          <h2 className="text-headline-small text-md-on-surface mb-3">Active Deployments</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <a href="https://os.woolooloo.tech" target="_blank" rel="noreferrer" className="text-title-large text-md-primary hover:underline">os.woolooloo.tech</a>
+                      <Badge variant="success-tonal"><span className="material-symbols-rounded text-10 align-middle">check</span>Live</Badge>
+                    </div>
+                    <p className="text-body-medium text-md-on-surface-variant mt-1">Woolooloo AI OS Dashboard</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge variant="secondary-outlined">192.168.1.161:3000</Badge>
+                      <Badge variant="primary-tonal"><span className="material-symbols-rounded text-14 mr-1">code</span>woolooloo-os</Badge>
+                    </div>
+                  </div>
+                  <a href="https://os.woolooloo.tech" target="_blank" rel="noreferrer"
+                    className="p-3 rounded-xl hover:bg-md-on-surface/5 text-md-on-surface-variant hover:text-md-on-surface transition-colors">
+                    <span className="material-symbols-rounded text-24">open_in_new</span>
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <a href="https://ncm.woolooloo.tech" target="_blank" rel="noreferrer" className="text-title-large text-md-primary hover:underline">ncm.woolooloo.tech</a>
+                      <Badge variant="success-tonal"><span className="material-symbols-rounded text-10 align-middle">check</span>Live</Badge>
+                    </div>
+                    <p className="text-body-medium text-md-on-surface-variant mt-1">Network Core Management</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge variant="secondary-outlined">192.168.1.161:3101</Badge>
+                      <Badge variant="primary-tonal"><span className="material-symbols-rounded text-14 mr-1">code</span>ncm</Badge>
+                    </div>
+                  </div>
+                  <a href="https://ncm.woolooloo.tech" target="_blank" rel="noreferrer"
+                    className="p-3 rounded-xl hover:bg-md-on-surface/5 text-md-on-surface-variant hover:text-md-on-surface transition-colors">
+                    <span className="material-symbols-rounded text-24">open_in_new</span>
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[

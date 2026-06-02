@@ -230,46 +230,46 @@ export function PiHarness() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const text = await res.text();
         setRunningProcesses(prev => prev.map(p =>
-          p.id === processId ? { ...p, status: "failed", output: [...p.output, err.error || "Failed"] } : p
+          p.id === processId ? { ...p, status: "failed", output: [...p.output, text || "Failed"] } : p
         ));
         setCommandHistory(prev => [{
           id: `hist_${Date.now()}`, input: prompt, command, timestamp: Date.now(),
-          duration: Date.now() - startMs, status: "failed", outputPreview: err.error,
+          duration: Date.now() - startMs, status: "failed", outputPreview: text,
         }, ...prev]);
-        setTerminalOutput(prev => [...prev, `❌ ${err.error || "Command failed"}`]);
+        setTerminalOutput(prev => [...prev, `❌ ${text || "Command failed"}`]);
         setIsProcessing(false);
         setPromptInput("");
         return;
       }
 
-      // JSON response: { output: string, exitCode: number }
-      const data = await res.json();
-      const exitCode = data.exitCode ?? 0;
-      const rawOutput = data.output ?? "";
-      const outputLines = typeof rawOutput === "string"
-        ? rawOutput.split('\n').filter((l: string) => l.trim() !== "").slice(-50)
-        : rawOutput;
-      const completed = exitCode === 0;
+      // API returns text/event-stream: "out:line\nerr:line\nexit:N\n"
+      const text = await res.text();
+      const lines = text.split('\n').filter(l => l.trim());
+      const outputLines: string[] = [];
+      let exitCode = 0;
 
-      // Show output in terminal
-      const displayLines = outputLines.map((l: string) =>
-        typeof l === "string" ? (completed ? l : l)
-        : JSON.stringify(l)
-      );
+      for (const raw of lines) {
+        if (raw.startsWith('out:')) {
+          const content = raw.slice(4);
+          if (content.trim()) outputLines.push(content);
+        } else if (raw.startsWith('err:')) {
+          const content = raw.slice(4);
+          if (content.trim()) outputLines.push(`⚠ ${content}`);
+        } else if (raw.startsWith('exit:')) {
+          exitCode = parseInt(raw.slice(5)) || 0;
+        }
+      }
+
+      const completed = exitCode === 0;
       setTerminalOutput(prev => [
         ...prev,
-        ...(displayLines as string[]),
-        completed
-          ? `✅ Done in ${Date.now() - startMs}ms`
-          : `❌ Exit ${exitCode} in ${Date.now() - startMs}ms`
+        ...outputLines,
+        completed ? `✅ Done in ${Date.now() - startMs}ms` : `❌ Exit ${exitCode} in ${Date.now() - startMs}ms`
       ]);
-
       setRunningProcesses(prev => prev.map(p =>
-        p.id === processId
-          ? { ...p, status: completed ? "completed" : "failed", exitCode, output: [...p.output, ...(displayLines as string[])] }
-          : p
+        p.id === processId ? { ...p, status: completed ? "completed" : "failed", exitCode, output: outputLines } : p
       ));
       setCommandHistory(prev => [{
         id: `hist_${Date.now()}`, input: prompt, command, timestamp: Date.now(),

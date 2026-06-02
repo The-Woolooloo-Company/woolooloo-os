@@ -244,55 +244,38 @@ export function PiHarness() {
         return;
       }
 
-      // Stream output
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "", exitCode = 0, outputLines: string[] = [];
-
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const raw of lines) {
-          if (raw.startsWith('out:')) {
-            const content = raw.slice(4);
-            if (content.trim()) {
-              outputLines.push(content);
-              setTerminalOutput(prev => [...prev, content]);
-              setRunningProcesses(prev => prev.map(p =>
-                p.id === processId ? { ...p, output: [...p.output, content] } : p
-              ));
-            }
-          } else if (raw.startsWith('err:')) {
-            const content = raw.slice(4);
-            if (content.trim()) {
-              setTerminalOutput(prev => [...prev, `⚠ ${content}`]);
-              setRunningProcesses(prev => prev.map(p =>
-                p.id === processId ? { ...p, output: [...p.output, content] } : p
-              ));
-            }
-          } else if (raw.startsWith('exit:')) {
-            exitCode = parseInt(raw.slice(5)) || 0;
-          }
-        }
-      }
-
+      // JSON response: { output: string, exitCode: number }
+      const data = await res.json();
+      const exitCode = data.exitCode ?? 0;
+      const rawOutput = data.output ?? "";
+      const outputLines = typeof rawOutput === "string"
+        ? rawOutput.split('\n').filter((l: string) => l.trim() !== "").slice(-50)
+        : rawOutput;
       const completed = exitCode === 0;
+
+      // Show output in terminal
+      const displayLines = outputLines.map((l: string) =>
+        typeof l === "string" ? (completed ? l : l)
+        : JSON.stringify(l)
+      );
+      setTerminalOutput(prev => [
+        ...prev,
+        ...(displayLines as string[]),
+        completed
+          ? `✅ Done in ${Date.now() - startMs}ms`
+          : `❌ Exit ${exitCode} in ${Date.now() - startMs}ms`
+      ]);
+
       setRunningProcesses(prev => prev.map(p =>
-        p.id === processId ? { ...p, status: completed ? "completed" : "failed", exitCode } : p
+        p.id === processId
+          ? { ...p, status: completed ? "completed" : "failed", exitCode, output: [...p.output, ...(displayLines as string[])] }
+          : p
       ));
       setCommandHistory(prev => [{
         id: `hist_${Date.now()}`, input: prompt, command, timestamp: Date.now(),
         duration: Date.now() - startMs, status: completed ? "success" : "failed",
         outputPreview: outputLines.slice(-3).join("\n") || (completed ? "Done" : `Exit ${exitCode}`),
       }, ...prev]);
-      setTerminalOutput(prev => [...prev, completed
-        ? `✅ Done in ${Date.now() - startMs}ms`
-        : `❌ Exit ${exitCode} in ${Date.now() - startMs}ms`
-      ]);
     } catch (err: any) {
       setRunningProcesses(prev => prev.map(p =>
         p.id === processId ? { ...p, status: "failed", output: [...p.output, err.message] } : p

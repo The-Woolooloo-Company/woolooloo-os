@@ -8,22 +8,11 @@ const CATPUCCIN = {
   foreground: "#cdd6f4",
   cursor: "#f5e0dc",
   selectionBackground: "#585b70",
-  black: "#45475a",
-  red: "#f38ba8",
-  green: "#a6e3a1",
-  yellow: "#f9e2af",
-  blue: "#89b4fa",
-  magenta: "#f5c2e7",
-  cyan: "#94e2d5",
-  white: "#bac2de",
-  brightBlack: "#585b70",
-  brightRed: "#f38ba8",
-  brightGreen: "#a6e3a1",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#a6adc8",
+  black: "#45475a", red: "#f38ba8", green: "#a6e3a1", yellow: "#f9e2af",
+  blue: "#89b4fa", magenta: "#f5c2e7", cyan: "#94e2d5", white: "#bac2de",
+  brightBlack: "#585b70", brightRed: "#f38ba8", brightGreen: "#a6e3a1",
+  brightYellow: "#f9e2af", brightBlue: "#89b4fa", brightMagenta: "#f5c2e7",
+  brightCyan: "#94e2d5", brightWhite: "#a6adc8",
 };
 
 export function XtermTerminal() {
@@ -32,10 +21,9 @@ export function XtermTerminal() {
   const [msg, setMsg] = useState("");
   const sessionIdRef = useRef("");
   const pollingRef = useRef(0);
+  const termRef = useRef<any>(null);
 
   useEffect(() => {
-    let term: any;
-    let fit: any;
     let disposed = false;
 
     async function init() {
@@ -48,7 +36,7 @@ export function XtermTerminal() {
         const { FitAddon } = await import("@xterm/addon-fit");
         if (disposed) return;
 
-        term = new Terminal({
+        const term = new Terminal({
           theme: CATPUCCIN,
           fontFamily: '"Cascadia Code", "JetBrains Mono", monospace',
           fontSize: 14,
@@ -56,11 +44,13 @@ export function XtermTerminal() {
           scrollback: 5000,
           convertEol: true,
         });
-        fit = new FitAddon();
+        const fit = new FitAddon();
         term.loadAddon(fit);
-        term.open(containerRef.current);
+        term.open(containerRef.current!);
         fit.fit();
+        termRef.current = term;
 
+        // Send keystrokes to server
         term.onData((key: string) => {
           if (!sessionIdRef.current) return;
           fetch("/api/terminal", {
@@ -74,6 +64,7 @@ export function XtermTerminal() {
           }).catch(() => {});
         });
 
+        // Ctrl+L to clear
         term.onKey(({ key, domEvent }: any) => {
           if (domEvent.ctrlKey && key === "l") {
             term.clear();
@@ -81,20 +72,9 @@ export function XtermTerminal() {
           }
         });
 
+        // Handle resize
         window.addEventListener("resize", () => {
           fit?.fit();
-          if (sessionIdRef.current) {
-            fetch("/api/terminal", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sessionId: sessionIdRef.current,
-                type: "resize",
-                cols: term?.cols,
-                rows: term?.rows,
-              }),
-            }).catch(() => {});
-          }
         });
 
         setMsg("Connecting...");
@@ -107,6 +87,7 @@ export function XtermTerminal() {
         sessionIdRef.current = json.sessionId;
         setStatus("ready");
 
+        // Poll for output
         let lastPos = 0;
         const poll = async () => {
           try {
@@ -116,7 +97,7 @@ export function XtermTerminal() {
             const data = await r.text();
             if (r.ok && data) {
               lastPos += data.length;
-              term?.write(data);
+              termRef.current?.write(data);
             }
             pollingRef.current = setTimeout(poll, 100) as any;
           } catch {
@@ -142,19 +123,20 @@ export function XtermTerminal() {
           body: JSON.stringify({ sessionId: sessionIdRef.current }),
         }).catch(() => {});
       }
-      term?.dispose();
+      termRef.current?.dispose();
     };
   }, []);
 
   return (
-    <div style={{ width: "100%", height: "100%", background: "#1e1e2e" }}>
+    <div style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}>
       {status !== "ready" && (
         <div
           style={{
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            height: "100%",
             color: status === "error" ? "#f38ba8" : "#71717a",
             fontSize: "14px",
             padding: "16px",
@@ -164,7 +146,7 @@ export function XtermTerminal() {
           {msg || "Starting terminal..."}
         </div>
       )}
-      <div ref={containerRef} style={{ display: status === "ready" ? "block" : "none", width: "100%", height: "100%" }} />
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }

@@ -8,6 +8,18 @@ const NO_CACHE = {
   Expires: "0",
 };
 
+const INTERCEPTOR = `<script>
+(function(){
+  var f=window.fetch;
+  window.fetch=function(u,o){
+    var i=u instanceof Request?u.url:String(u);
+    if(i.startsWith('/api/')||i.startsWith('/pi-web-plugins/'))
+      i='/api/pi-web-proxy'+i;
+    return f.call(this,i,o);
+  };
+})();
+</script>`;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path?: string[] }> }
@@ -24,12 +36,12 @@ export async function GET(
     if (ct.includes("text/html")) {
       let html = await res.text();
       const vb = "?v=" + Date.now();
-      // JS/CSS assets get cache-busting to bust Cloudflare edge cache
+      // JS/CSS assets get cache-busting
       html = html.replace(
         /(src|href)="\/assets\/([^\"]+\.js|[^"]+\.css)"/g,
         '$1="/api/pi-web-proxy/assets/$2' + vb + '"'
       );
-      // Rewrite other asset paths
+      // Other assets
       html = html.replace(
         /(src|href)="\/assets\/([^\"]+)"/g,
         '$1="/api/pi-web-proxy/assets/$2"'
@@ -46,6 +58,7 @@ export async function GET(
         /(src)="\/pi-web-plugins\/([^\"]+)"/g,
         'src="/api/pi-web-proxy/pi-web-plugins/$2"'
       );
+      html = html.replace("</head>", INTERCEPTOR + "</head>");
       return new NextResponse(html, {
         status: res.status,
         headers: { "content-type": "text/html; charset=utf-8", ...NO_CACHE },

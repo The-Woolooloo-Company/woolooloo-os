@@ -47,8 +47,16 @@ export function XtermTerminal() {
         const fit = new FitAddon();
         term.loadAddon(fit);
         term.open(containerRef.current!);
-        fit.fit();
         termRef.current = term;
+
+        // Wait for layout to settle before fitting
+        await new Promise((r) => requestAnimationFrame(r));
+        fit.fit();
+        term.focus();
+
+        // Click anywhere on terminal to focus
+        const handleContainerClick = () => term.focus();
+        containerRef.current?.addEventListener("click", handleContainerClick);
 
         // Send keystrokes to server
         term.onData((key: string) => {
@@ -64,7 +72,6 @@ export function XtermTerminal() {
           }).catch(() => {});
         });
 
-        // Ctrl+L to clear
         term.onKey(({ key, domEvent }: any) => {
           if (domEvent.ctrlKey && key === "l") {
             term.clear();
@@ -72,9 +79,7 @@ export function XtermTerminal() {
           }
         });
 
-        window.addEventListener("resize", () => {
-          fit?.fit();
-        });
+        window.addEventListener("resize", () => fit?.fit());
 
         setMsg("Connecting...");
         const res = await fetch("/api/terminal", {
@@ -146,7 +151,7 @@ export function XtermTerminal() {
           {msg || "Starting terminal..."}
         </div>
       )}
-      <div ref={containerRef} style={{ width: "100%", height: "100%", position: "relative", zIndex: 1 }} />
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }

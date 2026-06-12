@@ -4,51 +4,37 @@ import { randomUUID } from "crypto";
 
 interface Session {
   proc: ChildProcess;
+  output: string;
 }
 
 const sessions = new Map<string, Session>();
 
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("sessionId");
+  const pos = parseInt(request.nextUrl.searchParams.get("pos") || "0") || 0;
+
   if (!sessionId || !sessions.has(sessionId)) {
-    return new NextResponse("No session", { status: 400 });
+    return new Response("No session", { status: 400 });
   }
 
-  const { proc } = sessions.get(sessionId)!;
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    start(controller) {
-      proc.stdout!.on("data", (chunk: Buffer) => {
-        controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
-      });
-      proc.stderr!.on("data", (chunk: Buffer) => {
-        controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
-      });
-      proc.on("close", (code: number) => {
-        controller.enqueue(encoder.encode(`data: [Exited with code ${code}]\n\n`));
-        controller.close();
-      });
-    },
-  });
-
-  return new NextResponse(stream, {
+  const session = sessions.get(sessionId)!;
+  const newOutput = session.output.slice(pos);
+  return new Response(newOutput, {
     headers: {
-      "Content-Type": "text/event-stream",
+      "Content-Type": "text/plain",
       "Cache-Control": "no-cache",
-      Connection: "keep-alive",
     },
   });
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, sessionId, data, cols, rows } = body;
+  const { type, sessionId, data } = body;
 
   if (type === "create") {
     const id = randomUUID();
     const cwd = process.env.WORKSPACE_ROOT || "/app";
-    const proc = spawn("/bin/sh", ["-c", "exec /bin/sh"], {
+    const proc = spawn("/bin/sh", ["-i"], {
       cwd,
       env: {
         ...process.env,
@@ -57,8 +43,22 @@ export async function POST(request: NextRequest) {
         LANG: "en_US.UTF-8",
         PS1: "\\u@woolooloo:\\w\\$ ",
       },
+      stdio: ["pipe", "pipe", "pipe"],
     });
-    sessions.set(id, { proc });
+
+    // Inject initial prompt
+    setTimeout(() => {
+      if (sessions.has(id)) {
+        sessions.get(id)!.output = "root@woolooloo:/app$ \n";
+      }
+    }, 100);
+
+    const session: Session = { proc, output: "" };
+    proc.stdout!.on("data", (c: Buffer) => (session.output += c.toString()));
+    proc.stderr!.on("data", (c: Buffer) => (session.output += c.toString()));
+    proc.on("close", () => (session.output += "\n[Shell exited]\n"));
+
+    sessions.set(id, session);
     return NextResponse.json({ sessionId: id });
   }
 
@@ -77,12 +77,10 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const body = await request.json();
   const { sessionId } = body;
-
   if (sessionId && sessions.has(sessionId)) {
     sessions.get(sessionId)!.proc.kill();
     sessions.delete(sessionId);
   }
-
   return NextResponse.json({ ok: true });
 }
 

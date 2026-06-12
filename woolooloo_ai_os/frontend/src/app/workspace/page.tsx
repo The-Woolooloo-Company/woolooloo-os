@@ -62,7 +62,7 @@ export default function WorkspacePage() {
 
   const buildIframeUrl = (pid: string, wid: string) => {
     setIframeSrc(
-      `/api/pi-web-proxy/?project=${pid}&workspace=${wid}`
+      `/api/pi-web-proxy?project=${pid}&workspace=${wid}`
     );
   };
 

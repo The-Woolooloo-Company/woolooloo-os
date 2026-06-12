@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 
 const PI_WEB_URL = process.env.PI_WEB_URL || "http://192.168.1.161:8504";
 
+const INJECT_INTERCEPTOR = `
+<script>
+(function(){
+  var origFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    var input = url instanceof Request ? url.url : String(url);
+    if (input.startsWith('/api/') || input.startsWith('/pi-web-plugins/')) {
+      input = '/api/pi-web-proxy' + input;
+    }
+    return origFetch.call(this, input, opts);
+  };
+  var origWS = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    var input = url instanceof Request ? url.url : String(url);
+    if (input.startsWith('ws://') || input.startsWith('wss://')) {
+      var proto = input.startsWith('wss') ? 'wss' : 'ws';
+      var host = location.host;
+      var path = input.replace(/^wss?:\\/\\//, '');
+      input = proto + '://' + host + path.replace(/^[^/]+/, '');
+    }
+    return new origWS(input, protocols);
+  };
+  window.WebSocket.prototype = origWS.prototype;
+})();
+</script>
+`;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path?: string[] }> }
@@ -13,23 +40,31 @@ export async function GET(
 
   try {
     const res = await fetch(url.toString(), { cache: "no-store" });
-
-    // Rewrite HTML to use proxy paths
     const ct = res.headers.get("content-type") || "";
+
     if (ct.includes("text/html")) {
       let html = await res.text();
-      // Rewrite asset paths
+      // Rewrite asset paths to go through proxy
       html = html.replace(
-        /(src|href)="\/(assets\/|favicon|apple-touch|manifest)/g,
-        '$1="/api/pi-web-proxy/$2'
+        /(src|href)="\/assets\//g,
+        '$1="/api/pi-web-proxy/assets/'
       );
+      html = html.replace(
+        /(src|href)="\/favicon/g,
+        'href="/api/pi-web-proxy/favicon'
+      );
+      html = html.replace(
+        /(href)="\/manifest/g,
+        'href="/api/pi-web-proxy/manifest'
+      );
+      // Inject fetch/WebSocket interceptor before </head>
+      html = html.replace("</head>", INJECT_INTERCEPTOR + "</head>");
       return new NextResponse(html, {
         status: res.status,
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
 
-    // Pass through
     const headers = new Headers();
     res.headers.forEach((v, k) => {
       if (!["transfer-encoding", "connection"].includes(k)) headers.set(k, v);

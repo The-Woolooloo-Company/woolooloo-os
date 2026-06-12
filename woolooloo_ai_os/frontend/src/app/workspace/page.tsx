@@ -32,9 +32,9 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(false);
   const [iframeSrc, setIframeSrc] = useState("");
 
-  // Load projects on mount
+  // Load projects
   useEffect(() => {
-    fetch("http://192.168.1.161:8504/api/projects")
+    fetch("/api/pi-web-proxy/api/projects")
       .then((r) => r.json())
       .then((data: PiProject[]) => {
         setProjects(data);
@@ -50,7 +50,7 @@ export default function WorkspacePage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `http://192.168.1.161:8504/api/projects/${projectId}/workspaces`
+        `/api/pi-web-proxy/api/projects/${projectId}/workspaces`
       );
       const data: PiWorkspace[] = await res.json();
       setWorkspaces(data);
@@ -144,7 +144,7 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Content area — full height */}
+        {/* Content — full remaining height */}
         <div className="flex-1 overflow-hidden bg-[#1e1e2e]">
           {activeTab === "pi" && iframeSrc && (
             <iframe

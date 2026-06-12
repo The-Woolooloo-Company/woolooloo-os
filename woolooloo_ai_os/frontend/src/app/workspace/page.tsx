@@ -5,14 +5,11 @@ import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import { XtermTerminal } from "@/components/xterm-terminal";
 
-// ─── Types ─────────────────────────────────────────────────────
-
 interface PiProject {
   id: string;
   name: string;
   path: string;
 }
-
 interface PiWorkspace {
   id: string;
   projectId: string;
@@ -20,8 +17,6 @@ interface PiWorkspace {
   label: string;
   isMain: boolean;
 }
-
-// ─── Workspace Page ──────────────────────────────────────────────
 
 export default function WorkspacePage() {
   const [activeTab, setActiveTab] = useState<"pi" | "terminal">("pi");
@@ -32,7 +27,6 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(false);
   const [iframeSrc, setIframeSrc] = useState("");
 
-  // Load projects
   useEffect(() => {
     fetch("/api/pi-web-proxy/api/projects")
       .then((r) => r.json())
@@ -66,35 +60,26 @@ export default function WorkspacePage() {
     }
   };
 
-  const buildIframeUrl = (projectId: string, workspaceId: string) => {
-    const url = new URL("http://192.168.1.161:8504/");
-    url.searchParams.set("project", projectId);
-    url.searchParams.set("workspace", workspaceId);
-    setIframeSrc(url.toString());
-  };
-
-  const handleProjectChange = (projectId: string) => {
-    setSelectedProject(projectId);
-    loadWorkspaces(projectId);
-  };
-
-  const handleWorkspaceChange = (workspaceId: string) => {
-    setSelectedWorkspace(workspaceId);
-    buildIframeUrl(selectedProject, workspaceId);
+  const buildIframeUrl = (pid: string, wid: string) => {
+    setIframeSrc(
+      `/api/pi-web-proxy/?project=${pid}&workspace=${wid}`
+    );
   };
 
   return (
     <div className="min-h-screen bg-[#09090b] text-[#fafafa]">
       <Navbar />
       <div className="h-[calc(100vh-64px)] flex flex-col pt-[64px]">
-        {/* Compact toolbar */}
         <div className="h-12 border-b border-white/10 flex items-center gap-3 px-4 bg-[#0c0c0e] shrink-0">
           <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
             Project
           </span>
           <select
             value={selectedProject}
-            onChange={(e) => handleProjectChange(e.target.value)}
+            onChange={(e) => {
+              setSelectedProject(e.target.value);
+              loadWorkspaces(e.target.value);
+            }}
             className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-sm text-zinc-200 outline-none focus:border-blue-500"
           >
             {projects.map((p) => (
@@ -103,13 +88,12 @@ export default function WorkspacePage() {
               </option>
             ))}
           </select>
-
           <span className="text-xs text-zinc-500 uppercase tracking-wider font-medium ml-2">
             Workspace
           </span>
           <select
             value={selectedWorkspace}
-            onChange={(e) => handleWorkspaceChange(e.target.value)}
+            onChange={(e) => buildIframeUrl(selectedProject, e.target.value)}
             className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-sm text-zinc-200 outline-none focus:border-blue-500"
           >
             {workspaces.map((w) => (
@@ -118,7 +102,6 @@ export default function WorkspacePage() {
               </option>
             ))}
           </select>
-
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setActiveTab("pi")}
@@ -144,7 +127,6 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Content — full remaining height */}
         <div className="flex-1 overflow-hidden bg-[#1e1e2e]">
           {activeTab === "pi" && iframeSrc && (
             <iframe

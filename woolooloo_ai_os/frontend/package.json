@@ -12,6 +12,8 @@
   "dependencies": {
     "@qdrant/js-client-rest": "^1.18.0",
     "@radix-ui/react-slot": "^1.1.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "bootstrap": "^5.3.8",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",

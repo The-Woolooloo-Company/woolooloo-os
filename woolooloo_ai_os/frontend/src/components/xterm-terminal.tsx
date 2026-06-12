@@ -72,7 +72,6 @@ export function XtermTerminal() {
           }
         });
 
-        // Handle resize
         window.addEventListener("resize", () => {
           fit?.fit();
         });
@@ -86,8 +85,8 @@ export function XtermTerminal() {
         const json = await res.json();
         sessionIdRef.current = json.sessionId;
         setStatus("ready");
+        term.focus();
 
-        // Poll for output
         let lastPos = 0;
         const poll = async () => {
           try {
@@ -134,6 +133,7 @@ export function XtermTerminal() {
           style={{
             position: "absolute",
             top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 10,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -146,7 +146,7 @@ export function XtermTerminal() {
           {msg || "Starting terminal..."}
         </div>
       )}
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={containerRef} style={{ width: "100%", height: "100%", position: "relative", zIndex: 1 }} />
     </div>
   );
 }

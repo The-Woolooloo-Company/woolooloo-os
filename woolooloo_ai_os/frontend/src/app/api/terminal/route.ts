@@ -34,24 +34,21 @@ export async function POST(request: NextRequest) {
   if (type === "create") {
     const id = randomUUID();
     const cwd = process.env.WORKSPACE_ROOT || "/app";
-    const proc = spawn("/bin/sh", ["-i"], {
+
+    // Shell script that prints prompt, reads input, executes, prints prompt again
+    const script = `cd "${cwd}" && while :; do printf 'root@woolooloo:%s\\$ ' "\$(pwd)"; read cmd; eval "$cmd" 2>&1; echo; done;`;
+
+    const proc = spawn("/bin/sh", ["-c", script], {
       cwd,
       env: {
         ...process.env,
         TERM: "xterm-256color",
         SHELL: "/bin/sh",
         LANG: "en_US.UTF-8",
-        PS1: "\\u@woolooloo:\\w\\$ ",
+        PS1: "",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
-
-    // Inject initial prompt
-    setTimeout(() => {
-      if (sessions.has(id)) {
-        sessions.get(id)!.output = "root@woolooloo:/app$ \n";
-      }
-    }, 100);
 
     const session: Session = { proc, output: "" };
     proc.stdout!.on("data", (c: Buffer) => (session.output += c.toString()));
@@ -63,7 +60,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (type === "input" && sessionId && sessions.has(sessionId)) {
-    sessions.get(sessionId)!.proc.stdin!.write(data);
+    const session = sessions.get(sessionId)!;
+    if (session.proc.killed) {
+      session.output += "[Shell exited, refresh to restart]\n";
+      return NextResponse.json({ ok: true });
+    }
+    session.proc.stdin!.write(data);
     return NextResponse.json({ ok: true });
   }
 

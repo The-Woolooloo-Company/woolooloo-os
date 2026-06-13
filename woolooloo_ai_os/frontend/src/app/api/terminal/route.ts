@@ -20,10 +20,7 @@ export async function GET(request: NextRequest) {
   const session = sessions.get(sessionId)!;
   const newOutput = session.output.slice(pos);
   return new Response(newOutput, {
-    headers: {
-      "Content-Type": "text/plain",
-      "Cache-Control": "no-cache",
-    },
+    headers: { "Content-Type": "text/plain", "Cache-Control": "no-cache" },
   });
 }
 
@@ -35,8 +32,8 @@ export async function POST(request: NextRequest) {
     const id = randomUUID();
     const cwd = process.env.WORKSPACE_ROOT || "/app";
 
-    // Shell script that prints prompt, reads input, executes, prints prompt again
-    const script = `cd "${cwd}" && while :; do printf 'root@woolooloo:%s\\$ ' "\$(pwd)"; read cmd; eval "$cmd" 2>&1; echo; done;`;
+    // Simple read-echo-execute loop, no prompt (React terminal handles prompts)
+    const script = `cd '${cwd}'; while IFS= read -r line; do if [ -n "$line" ]; then eval "$line" 2>&1; fi; echo "___EOF___"; done;`;
 
     const proc = spawn("/bin/sh", ["-c", script], {
       cwd,
@@ -61,10 +58,7 @@ export async function POST(request: NextRequest) {
 
   if (type === "input" && sessionId && sessions.has(sessionId)) {
     const session = sessions.get(sessionId)!;
-    if (session.proc.killed) {
-      session.output += "[Shell exited, refresh to restart]\n";
-      return NextResponse.json({ ok: true });
-    }
+    if (session.proc.killed) return NextResponse.json({ ok: true });
     session.proc.stdin!.write(data);
     return NextResponse.json({ ok: true });
   }

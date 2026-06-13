@@ -1,127 +1,155 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import "@xterm/xterm/css/xterm.css";
+import { useEffect, useRef, useState, useCallback } from "react";
 
-const CATPUCCIN = {
-  background: "#1e1e2e",
-  foreground: "#cdd6f4",
-  cursor: "#f5e0dc",
-  selectionBackground: "#585b70",
-  black: "#45475a", red: "#f38ba8", green: "#a6e3a1", yellow: "#f9e2af",
-  blue: "#89b4fa", magenta: "#f5c2e7", cyan: "#94e2d5", white: "#bac2de",
-  brightBlack: "#585b70", brightRed: "#f38ba8", brightGreen: "#a6e3a1",
-  brightYellow: "#f9e2af", brightBlue: "#89b4fa", brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5", brightWhite: "#a6adc8",
-};
+const PROMPT = "root@woolooloo:/app$ ";
 
 export function XtermTerminal() {
-  const innerRef = useRef<HTMLDivElement>(null);
+  const [sessionId, setSessionId] = useState("");
+  const [output, setOutput] = useState<string[]>([PROMPT]);
+  const [buffer, setBuffer] = useState("");
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [msg, setMsg] = useState("");
-  const sessionIdRef = useRef("");
-  const termRef = useRef<any>(null);
   const pollingRef = useRef(0);
-  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  const posRef = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom on output change
+  useEffect(() => {
+    outputRef.current?.scrollTo(0, outputRef.current.scrollHeight);
+  }, [output, buffer]);
+
+  const sendInput = useCallback((data: string) => {
+    if (!sessionId) return;
+    fetch("/api/terminal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, type: "input", data }),
+    }).catch(() => {});
+  }, [sessionId]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (status !== "ready") return;
+
+      const { key, ctrlKey, altKey, metaKey } = e;
+
+      // Enter - send newline, add new prompt line
+      if (key === "Enter") {
+        e.preventDefault();
+        sendInput("\n");
+        setOutput((prev) => [...prev, PROMPT]);
+        setBuffer("");
+        return;
+      }
+
+      // Backspace
+      if (key === "Backspace") {
+        e.preventDefault();
+        if (buffer.length > 0) {
+          sendInput("\x7f");
+          setBuffer((prev) => prev.slice(0, -1));
+        }
+        return;
+      }
+
+      // Tab
+      if (key === "Tab") {
+        e.preventDefault();
+        sendInput("\t");
+        return;
+      }
+
+      // Escape
+      if (key === "Escape") {
+        e.preventDefault();
+        sendInput("\x1b");
+        return;
+      }
+
+      // Delete
+      if (key === "Delete") {
+        e.preventDefault();
+        sendInput("\x1b[3~");
+        return;
+      }
+
+      // Arrow keys
+      if (key === "ArrowUp") { e.preventDefault(); sendInput("\x1b[A"); return; }
+      if (key === "ArrowDown") { e.preventDefault(); sendInput("\x1b[B"); return; }
+      if (key === "ArrowLeft") { e.preventDefault(); sendInput("\x1b[D"); return; }
+      if (key === "ArrowRight") { e.preventDefault(); sendInput("\x1b[C"); return; }
+
+      // Ctrl+C
+      if (ctrlKey && key === "c") {
+        e.preventDefault();
+        sendInput("\x03");
+        setOutput((prev) => [...prev, prev[prev.length - 1].replace(PROMPT, "") + "^C", PROMPT]);
+        setBuffer("");
+        return;
+      }
+
+      // Ctrl+L (clear)
+      if (ctrlKey && key === "l") {
+        e.preventDefault();
+        setOutput([PROMPT]);
+        setBuffer("");
+        return;
+      }
+
+      // Printable characters
+      if (key.length === 1 && !ctrlKey && !altKey && !metaKey) {
+        e.preventDefault();
+        sendInput(key);
+        setBuffer((prev) => prev + key);
+      }
+    },
+    [status, buffer, sessionId, sendInput]
+  );
 
   useEffect(() => {
     let disposed = false;
 
-    // Build the handler - it reads refs directly so no stale closure issues
-    keyHandlerRef.current = (e: KeyboardEvent) => {
-      const sid = sessionIdRef.current;
-      if (!sid) return;
-
-      e.preventDefault();
-
-      let seq = "";
-      const key = e.key;
-      const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
-
-      if (key === "Enter") seq = "\r";
-      else if (key === "Backspace") seq = "\x7f";
-      else if (key === "Tab") seq = "\t";
-      else if (key === "Escape") seq = "\x1b";
-      else if (key === "Delete") seq = "\x1b[3~";
-      else if (key === "ArrowUp") seq = "\x1b[A";
-      else if (key === "ArrowDown") seq = "\x1b[B";
-      else if (key === "ArrowLeft") seq = "\x1b[D";
-      else if (key === "ArrowRight") seq = "\x1b[C";
-      else if (key === "Home") seq = "\x1b[H";
-      else if (key === "End") seq = "\x1b[F";
-      else if (key === "PageUp") seq = "\x1b[5~";
-      else if (key === "PageDown") seq = "\x1b[6~";
-      else if (ctrl && key.length === 1) {
-        seq = String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64);
-      }
-      else if (key.length === 1 && !ctrl && !e.altKey && !e.metaKey) {
-        seq = key;
-      }
-      else return;
-
-      // Send to server
-      fetch("/api/terminal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sid, type: "input", data: seq }),
-      }).catch(() => {});
-
-      // Echo printable chars locally
-      if (key.length === 1 && !ctrl) {
-        termRef.current?.write(key);
-      }
-    };
-
     async function init() {
       try {
         setStatus("loading");
-        setMsg("Importing terminal...");
-
-        const { Terminal } = await import("@xterm/xterm");
-        if (disposed) return;
-        const { FitAddon } = await import("@xterm/addon-fit");
-        if (disposed) return;
-
-        const term = new Terminal({
-          theme: CATPUCCIN,
-          fontFamily: '"Cascadia Code", "JetBrains Mono", monospace',
-          fontSize: 14,
-          cursorBlink: true,
-          scrollback: 5000,
-        });
-        const fit = new FitAddon();
-        term.loadAddon(fit);
-        term.open(innerRef.current!);
-        termRef.current = term;
-
-        await new Promise((r) => requestAnimationFrame(r));
-        fit.fit();
-
-        window.addEventListener("resize", () => fit?.fit());
-
         setMsg("Connecting...");
+
+        // Create session
         const res = await fetch("/api/terminal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "create" }),
         });
         const json = await res.json();
-        sessionIdRef.current = json.sessionId;
+        setSessionId(json.sessionId);
         setStatus("ready");
+        inputRef.current?.focus();
 
-        // Global listener on capture phase
-        document.addEventListener("keydown", keyHandlerRef.current, true);
-
-        let lastPos = 0;
+        // Poll for output
         const poll = async () => {
           try {
             const r = await fetch(
-              `/api/terminal?sessionId=${sessionIdRef.current}&pos=${lastPos}`
+              `/api/terminal?sessionId=${json.sessionId}&pos=${posRef.current}`
             );
             const data = await r.text();
             if (r.ok && data) {
-              lastPos += data.length;
-              termRef.current?.write(data);
+              posRef.current += data.length;
+              // Parse output - split on ___EOF___ marker from shell script
+              const parts = data.split("___EOF___");
+              const output = parts[0] || "";
+              if (output) {
+                setOutput((prev) => {
+                  const lines = output.split("\n");
+                  const result = [...prev];
+                  result[result.length - 1] += lines[0] || "";
+                  for (let i = 1; i < lines.length; i++) {
+                    result.push(lines[i]);
+                  }
+                  return result;
+                });
+              }
             }
             pollingRef.current = setTimeout(poll, 100) as any;
           } catch {
@@ -140,39 +168,82 @@ export function XtermTerminal() {
     return () => {
       disposed = true;
       clearTimeout(pollingRef.current);
-      document.removeEventListener("keydown", keyHandlerRef.current, true);
-      if (sessionIdRef.current) {
+      if (sessionId) {
         fetch("/api/terminal", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: sessionIdRef.current }),
+          body: JSON.stringify({ sessionId }),
         }).catch(() => {});
       }
-      termRef.current?.dispose();
     };
   }, []);
 
+  if (status !== "ready") {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          background: "#1e1e2e",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: status === "error" ? "#f38ba8" : "#71717a",
+          fontSize: "14px",
+        }}
+      >
+        {msg || "Connecting..."}
+      </div>
+    );
+  }
+
+  // Build display: last line has cursor
+  const displayLines = output.slice(0, -1);
+  const lastLine = output[output.length - 1] || "";
+
   return (
-    <div style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}>
-      {status !== "ready" && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0, left: 0, right: 0, bottom: 0,
-            zIndex: 10,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: status === "error" ? "#f38ba8" : "#71717a",
-            fontSize: "14px",
-            padding: "16px",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {msg || "Starting terminal..."}
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#1e1e2e",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        ref={outputRef}
+        style={{
+          flex: 1,
+          overflow: "auto",
+          padding: "8px",
+          fontFamily: '"Cascadia Code", "JetBrains Mono", monospace',
+          fontSize: "14px",
+          lineHeight: "1.4",
+          color: "#cdd6f4",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+        }}
+      >
+        {displayLines.map((line, i) => (
+          <div key={i}>{line}</div>
+        ))}
+        <div>
+          {lastLine}{buffer}<span style={{ color: "#f5e0dc" }}>▌</span>
         </div>
-      )}
-      <div ref={innerRef} style={{ width: "100%", height: "100%" }} />
+      </div>
+      <input
+        ref={inputRef}
+        style={{
+          position: "absolute",
+          opacity: 0,
+          width: 0,
+          height: 0,
+          pointerEvents: "none",
+        }}
+        onKeyDown={handleKeyDown}
+        autoFocus
+      />
     </div>
   );
 }

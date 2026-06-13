@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 const CATPUCCIN = {
@@ -19,104 +19,56 @@ export function XtermTerminal() {
   const innerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [msg, setMsg] = useState("");
-  const statusRef = useRef(false);
   const sessionIdRef = useRef("");
   const termRef = useRef<any>(null);
   const pollingRef = useRef(0);
-
-  useEffect(() => {
-    statusRef.current = status === "ready";
-  }, [status]);
-
-  const sendKey = useCallback((data: string) => {
-    const sid = sessionIdRef.current;
-    if (!sid) return;
-    fetch("/api/terminal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: sid, type: "input", data }),
-    }).catch(() => {});
-  }, []);
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
   useEffect(() => {
     let disposed = false;
 
-    const globalHandler = (e: KeyboardEvent) => {
-      if (!statusRef.current || !sessionIdRef.current) return;
+    // Build the handler - it reads refs directly so no stale closure issues
+    keyHandlerRef.current = (e: KeyboardEvent) => {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
 
-      const key = e.key;
-      const ctrl = e.ctrlKey;
-      const shift = e.shiftKey;
-
-      // Always prevent default for terminal keys
       e.preventDefault();
 
-      // Enter
-      if (key === "Enter") {
-        sendKey("\r");
-        return;
+      let seq = "";
+      const key = e.key;
+      const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
+
+      if (key === "Enter") seq = "\r";
+      else if (key === "Backspace") seq = "\x7f";
+      else if (key === "Tab") seq = "\t";
+      else if (key === "Escape") seq = "\x1b";
+      else if (key === "Delete") seq = "\x1b[3~";
+      else if (key === "ArrowUp") seq = "\x1b[A";
+      else if (key === "ArrowDown") seq = "\x1b[B";
+      else if (key === "ArrowLeft") seq = "\x1b[D";
+      else if (key === "ArrowRight") seq = "\x1b[C";
+      else if (key === "Home") seq = "\x1b[H";
+      else if (key === "End") seq = "\x1b[F";
+      else if (key === "PageUp") seq = "\x1b[5~";
+      else if (key === "PageDown") seq = "\x1b[6~";
+      else if (ctrl && key.length === 1) {
+        seq = String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64);
       }
-      // Backspace
-      if (key === "Backspace") {
-        sendKey("\x7f");
-        return;
+      else if (key.length === 1 && !ctrl && !e.altKey && !e.metaKey) {
+        seq = key;
       }
-      // Tab
-      if (key === "Tab") {
-        sendKey("\t");
-        return;
-      }
-      // Escape
-      if (key === "Escape") {
-        sendKey("\x1b");
-        return;
-      }
-      // Delete
-      if (key === "Delete") {
-        sendKey("\x1b[3~");
-        return;
-      }
-      // Arrow keys
-      if (key === "ArrowUp") { sendKey("\x1b[A"); return; }
-      if (key === "ArrowDown") { sendKey("\x1b[B"); return; }
-      if (key === "ArrowLeft") { sendKey("\x1b[D"); return; }
-      if (key === "ArrowRight") { sendKey("\x1b[C"); return; }
-      // Home / End
-      if (key === "Home") { sendKey("\x1b[H"); return; }
-      if (key === "End") { sendKey("\x1b[F"); return; }
-      // Page Up / Page Down
-      if (key === "PageUp") { sendKey("\x1b[5~"); return; }
-      if (key === "PageDown") { sendKey("\x1b[6~"); return; }
-      // F1-F12
-      if (key.startsWith("F")) {
-        const n = parseInt(key.slice(1));
-        if (n >= 1 && n <= 4) sendKey(`\x1bOP`);
-        else if (n >= 5 && n <= 8) sendKey(`\x1b[1${n - 4}~`);
-        return;
-      }
-      // Ctrl + letter
-      if (ctrl && key.length === 1 && !shift) {
-        const code = key.toUpperCase().charCodeAt(0) - 64;
-        if (code >= 1 && code <= 26) {
-          sendKey(String.fromCharCode(code));
-          return;
-        }
-      }
-      // Ctrl + Shift + letter
-      if (ctrl && key.length === 1 && shift) {
-        sendKey("^" + key.toUpperCase());
-        return;
-      }
-      // Alt + key (Meta key on macOS)
-      if (e.altKey && !ctrl && key.length === 1) {
-        sendKey("\x1b" + key);
-        return;
-      }
-      // Printable characters
-      if (key.length === 1 && !ctrl && !e.altKey && !e.metaKey) {
-        sendKey(key);
+      else return;
+
+      // Send to server
+      fetch("/api/terminal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid, type: "input", data: seq }),
+      }).catch(() => {});
+
+      // Echo printable chars locally
+      if (key.length === 1 && !ctrl) {
         termRef.current?.write(key);
-        return;
       }
     };
 
@@ -157,8 +109,8 @@ export function XtermTerminal() {
         sessionIdRef.current = json.sessionId;
         setStatus("ready");
 
-        // Add global listener in capture phase
-        document.addEventListener("keydown", globalHandler, true);
+        // Global listener on capture phase
+        document.addEventListener("keydown", keyHandlerRef.current, true);
 
         let lastPos = 0;
         const poll = async () => {
@@ -188,7 +140,7 @@ export function XtermTerminal() {
     return () => {
       disposed = true;
       clearTimeout(pollingRef.current);
-      document.removeEventListener("keydown", globalHandler, true);
+      document.removeEventListener("keydown", keyHandlerRef.current, true);
       if (sessionIdRef.current) {
         fetch("/api/terminal", {
           method: "DELETE",
@@ -198,7 +150,7 @@ export function XtermTerminal() {
       }
       termRef.current?.dispose();
     };
-  }, [sendKey]);
+  }, []);
 
   return (
     <div style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}>

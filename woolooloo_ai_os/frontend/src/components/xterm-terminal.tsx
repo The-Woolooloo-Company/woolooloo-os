@@ -15,20 +15,6 @@ const CATPUCCIN = {
   brightCyan: "#94e2d5", brightWhite: "#a6adc8",
 };
 
-const SPECIAL_KEYS: Record<string, string> = {
-  Backspace: "\x7f",
-  Tab: "\t",
-  Enter: "\r",
-  Escape: "\x1b",
-  Delete: "\x1b[3~",
-  ArrowUp: "\x1b[A",
-  ArrowDown: "\x1b[B",
-  ArrowLeft: "\x1b[D",
-  ArrowRight: "\x1b[C",
-  Home: "\x1b[H",
-  End: "\x1b[F",
-};
-
 export function XtermTerminal() {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -38,7 +24,7 @@ export function XtermTerminal() {
   const pollingRef = useRef(0);
   const termRef = useRef<any>(null);
 
-  const sendKey = useCallback((key: string) => {
+  const sendKey = useCallback((data: string) => {
     if (!sessionIdRef.current) return;
     fetch("/api/terminal", {
       method: "POST",
@@ -46,47 +32,73 @@ export function XtermTerminal() {
       body: JSON.stringify({
         sessionId: sessionIdRef.current,
         type: "input",
-        data: key,
+        data,
       }),
     }).catch(() => {});
   }, []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (status !== "ready") return;
-
-      const { key, ctrlKey, altKey, metaKey } = e;
-
-      // Ctrl+letter → ASCII control char (Ctrl+C = 0x03)
-      if (ctrlKey && key.length === 1 && !altKey && !metaKey) {
-        e.preventDefault();
-        const code = key.toUpperCase().charCodeAt(0) - 64;
-        sendKey(String.fromCharCode(code));
-        termRef.current?.write(String.fromCharCode(code));
-        return;
-      }
-
-      // Special keys
-      if (key in SPECIAL_KEYS) {
-        e.preventDefault();
-        sendKey(SPECIAL_KEYS[key]);
-        if (key === "Enter" || key === "Backspace") return;
-        // Arrow keys don't echo locally
-        return;
-      }
-
-      // Regular printable characters
-      if (key.length === 1 && !ctrlKey && !altKey && !metaKey) {
-        e.preventDefault();
-        sendKey(key);
-        termRef.current?.write(key);
-      }
-    },
-    [status, sendKey]
-  );
-
   useEffect(() => {
     let disposed = false;
+
+    // Global keyboard handler - always captures when this div should receive input
+    const globalKeyDown = (e: KeyboardEvent) => {
+      if (status !== "ready" || !sessionIdRef.current) return;
+      if (document.activeElement !== outerRef.current) return;
+
+      const key = e.key;
+
+      // Always prevent default and stop propagation for terminal keys
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Enter
+      if (key === "Enter") {
+        sendKey("\r");
+        return;
+      }
+      // Backspace
+      if (key === "Backspace") {
+        sendKey("\x7f");
+        return;
+      }
+      // Tab
+      if (key === "Tab") {
+        sendKey("\t");
+        return;
+      }
+      // Escape
+      if (key === "Escape") {
+        sendKey("\x1b");
+        return;
+      }
+      // Delete
+      if (key === "Delete") {
+        sendKey("\x1b[3~");
+        return;
+      }
+      // Arrows
+      if (key === "ArrowUp") { sendKey("\x1b[A"); return; }
+      if (key === "ArrowDown") { sendKey("\x1b[B"); return; }
+      if (key === "ArrowLeft") { sendKey("\x1b[D"); return; }
+      if (key === "ArrowRight") { sendKey("\x1b[C"); return; }
+      // Home/End
+      if (key === "Home") { sendKey("\x1b[H"); return; }
+      if (key === "End") { sendKey("\x1b[F"); return; }
+      // PageUp/PageDown
+      if (key === "PageUp") { sendKey("\x1b[5~"); return; }
+      if (key === "PageDown") { sendKey("\x1b[6~"); return; }
+      // Ctrl combinations
+      if (e.ctrlKey && key.length === 1) {
+        sendKey(String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64));
+        return;
+      }
+      // Printable characters
+      if (key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        sendKey(key);
+        termRef.current?.write(key);
+        return;
+      }
+    };
 
     async function init() {
       try {
@@ -125,6 +137,10 @@ export function XtermTerminal() {
         sessionIdRef.current = json.sessionId;
         setStatus("ready");
 
+        // Add global listener so it always fires
+        document.addEventListener("keydown", globalKeyDown, true);
+
+        // Focus outer div so it can receive keyboard events
         requestAnimationFrame(() => outerRef.current?.focus());
 
         let lastPos = 0;
@@ -155,6 +171,7 @@ export function XtermTerminal() {
     return () => {
       disposed = true;
       clearTimeout(pollingRef.current);
+      document.removeEventListener("keydown", globalKeyDown, true);
       if (sessionIdRef.current) {
         fetch("/api/terminal", {
           method: "DELETE",
@@ -174,11 +191,9 @@ export function XtermTerminal() {
         height: "100%",
         background: "#1e1e2e",
         position: "relative",
-        outline: "none",
         cursor: "text",
       }}
       tabIndex={0}
-      onKeyDown={handleKeyDown}
       onClick={() => outerRef.current?.focus()}
     >
       {status !== "ready" && (

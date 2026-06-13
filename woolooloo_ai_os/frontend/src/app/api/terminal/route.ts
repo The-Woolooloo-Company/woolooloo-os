@@ -32,10 +32,8 @@ export async function POST(request: NextRequest) {
     const id = randomUUID();
     const cwd = process.env.WORKSPACE_ROOT || "/app";
 
-    // Simple read-echo-execute loop, no prompt (React terminal handles prompts)
-    const script = `cd '${cwd}'; while IFS= read -r line; do if [ -n "$line" ]; then eval "$line" 2>&1; fi; echo "___EOF___"; done;`;
-
-    const proc = spawn("/bin/sh", ["-c", script], {
+    // Simple shell - stdin/stdout piped, no interactive mode, no prompt
+    const proc = spawn("/bin/sh", [], {
       cwd,
       env: {
         ...process.env,

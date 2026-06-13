@@ -19,55 +19,101 @@ export function XtermTerminal() {
   const innerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [msg, setMsg] = useState("");
+  const statusRef = useRef(false);
   const sessionIdRef = useRef("");
-  const pollingRef = useRef(0);
   const termRef = useRef<any>(null);
-  const isReadyRef = useRef(false);
+  const pollingRef = useRef(0);
+
+  useEffect(() => {
+    statusRef.current = status === "ready";
+  }, [status]);
 
   const sendKey = useCallback((data: string) => {
-    if (!sessionIdRef.current) return;
+    const sid = sessionIdRef.current;
+    if (!sid) return;
     fetch("/api/terminal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: sessionIdRef.current,
-        type: "input",
-        data,
-      }),
+      body: JSON.stringify({ sessionId: sid, type: "input", data }),
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
     let disposed = false;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isReadyRef.current) return;
+    const globalHandler = (e: KeyboardEvent) => {
+      if (!statusRef.current || !sessionIdRef.current) return;
 
       const key = e.key;
+      const ctrl = e.ctrlKey;
+      const shift = e.shiftKey;
 
-      // Special keys
-      if (key === "Enter") { e.preventDefault(); sendKey("\r"); return; }
-      if (key === "Backspace") { e.preventDefault(); sendKey("\x7f"); return; }
-      if (key === "Tab") { e.preventDefault(); sendKey("\t"); return; }
-      if (key === "Escape") { e.preventDefault(); sendKey("\x1b"); return; }
-      if (key === "Delete") { e.preventDefault(); sendKey("\x1b[3~"); return; }
-      if (key === "ArrowUp") { e.preventDefault(); sendKey("\x1b[A"); return; }
-      if (key === "ArrowDown") { e.preventDefault(); sendKey("\x1b[B"); return; }
-      if (key === "ArrowLeft") { e.preventDefault(); sendKey("\x1b[D"); return; }
-      if (key === "ArrowRight") { e.preventDefault(); sendKey("\x1b[C"); return; }
-      if (key === "Home") { e.preventDefault(); sendKey("\x1b[H"); return; }
-      if (key === "End") { e.preventDefault(); sendKey("\x1b[F"); return; }
+      // Always prevent default for terminal keys
+      e.preventDefault();
 
-      // Ctrl+letter
-      if (e.ctrlKey && !e.altKey && !e.metaKey && key.length === 1) {
-        e.preventDefault();
-        sendKey(String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64));
+      // Enter
+      if (key === "Enter") {
+        sendKey("\r");
         return;
       }
-
+      // Backspace
+      if (key === "Backspace") {
+        sendKey("\x7f");
+        return;
+      }
+      // Tab
+      if (key === "Tab") {
+        sendKey("\t");
+        return;
+      }
+      // Escape
+      if (key === "Escape") {
+        sendKey("\x1b");
+        return;
+      }
+      // Delete
+      if (key === "Delete") {
+        sendKey("\x1b[3~");
+        return;
+      }
+      // Arrow keys
+      if (key === "ArrowUp") { sendKey("\x1b[A"); return; }
+      if (key === "ArrowDown") { sendKey("\x1b[B"); return; }
+      if (key === "ArrowLeft") { sendKey("\x1b[D"); return; }
+      if (key === "ArrowRight") { sendKey("\x1b[C"); return; }
+      // Home / End
+      if (key === "Home") { sendKey("\x1b[H"); return; }
+      if (key === "End") { sendKey("\x1b[F"); return; }
+      // Page Up / Page Down
+      if (key === "PageUp") { sendKey("\x1b[5~"); return; }
+      if (key === "PageDown") { sendKey("\x1b[6~"); return; }
+      // F1-F12
+      if (key.startsWith("F")) {
+        const n = parseInt(key.slice(1));
+        if (n >= 1 && n <= 4) sendKey(`\x1bOP`);
+        else if (n >= 5 && n <= 8) sendKey(`\x1b[1${n - 4}~`);
+        return;
+      }
+      // Ctrl + letter
+      if (ctrl && key.length === 1 && !shift) {
+        const code = key.toUpperCase().charCodeAt(0) - 64;
+        if (code >= 1 && code <= 26) {
+          sendKey(String.fromCharCode(code));
+          return;
+        }
+      }
+      // Ctrl + Shift + letter
+      if (ctrl && key.length === 1 && shift) {
+        sendKey("^" + key.toUpperCase());
+        return;
+      }
+      // Alt + key (Meta key on macOS)
+      if (e.altKey && !ctrl && key.length === 1) {
+        sendKey("\x1b" + key);
+        return;
+      }
       // Printable characters
-      if (key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        e.preventDefault();
+      if (key.length === 1 && !ctrl && !e.altKey && !e.metaKey) {
         sendKey(key);
         termRef.current?.write(key);
         return;
@@ -109,11 +155,10 @@ export function XtermTerminal() {
         });
         const json = await res.json();
         sessionIdRef.current = json.sessionId;
-        isReadyRef.current = true;
         setStatus("ready");
 
-        // Add global listener on capture phase - fires before everything else
-        document.addEventListener("keydown", handleKeyDown, true);
+        // Add global listener in capture phase
+        document.addEventListener("keydown", globalHandler, true);
 
         let lastPos = 0;
         const poll = async () => {
@@ -142,9 +187,8 @@ export function XtermTerminal() {
 
     return () => {
       disposed = true;
-      isReadyRef.current = false;
       clearTimeout(pollingRef.current);
-      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keydown", globalHandler, true);
       if (sessionIdRef.current) {
         fetch("/api/terminal", {
           method: "DELETE",
@@ -154,7 +198,7 @@ export function XtermTerminal() {
       }
       termRef.current?.dispose();
     };
-  }, []);
+  }, [sendKey]);
 
   return (
     <div style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}>

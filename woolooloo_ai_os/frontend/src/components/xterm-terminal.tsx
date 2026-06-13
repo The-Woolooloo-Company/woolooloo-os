@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 const CATPUCCIN = {
@@ -16,12 +16,17 @@ const CATPUCCIN = {
 };
 
 export function XtermTerminal() {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [msg, setMsg] = useState("");
   const sessionIdRef = useRef("");
   const pollingRef = useRef(0);
   const termRef = useRef<any>(null);
+
+  const focusTerm = useCallback(() => {
+    termRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -46,17 +51,12 @@ export function XtermTerminal() {
         });
         const fit = new FitAddon();
         term.loadAddon(fit);
-        term.open(containerRef.current!);
+        term.open(innerRef.current!);
         termRef.current = term;
 
-        // Wait for layout to settle before fitting
         await new Promise((r) => requestAnimationFrame(r));
         fit.fit();
         term.focus();
-
-        // Click anywhere on terminal to focus
-        const handleContainerClick = () => term.focus();
-        containerRef.current?.addEventListener("click", handleContainerClick);
 
         // Send keystrokes to server
         term.onData((key: string) => {
@@ -90,7 +90,9 @@ export function XtermTerminal() {
         const json = await res.json();
         sessionIdRef.current = json.sessionId;
         setStatus("ready");
-        term.focus();
+
+        // Focus on next frame after status changes
+        requestAnimationFrame(() => term.focus());
 
         let lastPos = 0;
         const poll = async () => {
@@ -132,7 +134,11 @@ export function XtermTerminal() {
   }, []);
 
   return (
-    <div style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}>
+    <div
+      ref={outerRef}
+      style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}
+      onClick={focusTerm}
+    >
       {status !== "ready" && (
         <div
           style={{
@@ -151,7 +157,7 @@ export function XtermTerminal() {
           {msg || "Starting terminal..."}
         </div>
       )}
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={innerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }

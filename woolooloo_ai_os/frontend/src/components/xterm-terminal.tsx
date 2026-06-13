@@ -15,6 +15,20 @@ const CATPUCCIN = {
   brightCyan: "#94e2d5", brightWhite: "#a6adc8",
 };
 
+const SPECIAL_KEYS: Record<string, string> = {
+  Backspace: "\x7f",
+  Tab: "\t",
+  Enter: "\r",
+  Escape: "\x1b",
+  Delete: "\x1b[3~",
+  ArrowUp: "\x1b[A",
+  ArrowDown: "\x1b[B",
+  ArrowLeft: "\x1b[D",
+  ArrowRight: "\x1b[C",
+  Home: "\x1b[H",
+  End: "\x1b[F",
+};
+
 export function XtermTerminal() {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -24,9 +38,52 @@ export function XtermTerminal() {
   const pollingRef = useRef(0);
   const termRef = useRef<any>(null);
 
-  const focusTerm = useCallback(() => {
-    termRef.current?.focus();
+  const sendKey = useCallback((key: string) => {
+    if (!sessionIdRef.current) return;
+    fetch("/api/terminal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: sessionIdRef.current,
+        type: "input",
+        data: key,
+      }),
+    }).catch(() => {});
   }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (status !== "ready") return;
+
+      const { key, ctrlKey, altKey, metaKey } = e;
+
+      // Ctrl+letter → ASCII control char (Ctrl+C = 0x03)
+      if (ctrlKey && key.length === 1 && !altKey && !metaKey) {
+        e.preventDefault();
+        const code = key.toUpperCase().charCodeAt(0) - 64;
+        sendKey(String.fromCharCode(code));
+        termRef.current?.write(String.fromCharCode(code));
+        return;
+      }
+
+      // Special keys
+      if (key in SPECIAL_KEYS) {
+        e.preventDefault();
+        sendKey(SPECIAL_KEYS[key]);
+        if (key === "Enter" || key === "Backspace") return;
+        // Arrow keys don't echo locally
+        return;
+      }
+
+      // Regular printable characters
+      if (key.length === 1 && !ctrlKey && !altKey && !metaKey) {
+        e.preventDefault();
+        sendKey(key);
+        termRef.current?.write(key);
+      }
+    },
+    [status, sendKey]
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -47,7 +104,6 @@ export function XtermTerminal() {
           fontSize: 14,
           cursorBlink: true,
           scrollback: 5000,
-          convertEol: true,
         });
         const fit = new FitAddon();
         term.loadAddon(fit);
@@ -56,28 +112,6 @@ export function XtermTerminal() {
 
         await new Promise((r) => requestAnimationFrame(r));
         fit.fit();
-        term.focus();
-
-        // Send keystrokes to server
-        term.onData((key: string) => {
-          if (!sessionIdRef.current) return;
-          fetch("/api/terminal", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: sessionIdRef.current,
-              type: "input",
-              data: key,
-            }),
-          }).catch(() => {});
-        });
-
-        term.onKey(({ key, domEvent }: any) => {
-          if (domEvent.ctrlKey && key === "l") {
-            term.clear();
-            domEvent.preventDefault();
-          }
-        });
 
         window.addEventListener("resize", () => fit?.fit());
 
@@ -91,8 +125,7 @@ export function XtermTerminal() {
         sessionIdRef.current = json.sessionId;
         setStatus("ready");
 
-        // Focus on next frame after status changes
-        requestAnimationFrame(() => term.focus());
+        requestAnimationFrame(() => outerRef.current?.focus());
 
         let lastPos = 0;
         const poll = async () => {
@@ -136,8 +169,17 @@ export function XtermTerminal() {
   return (
     <div
       ref={outerRef}
-      style={{ width: "100%", height: "100%", background: "#1e1e2e", position: "relative" }}
-      onClick={focusTerm}
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#1e1e2e",
+        position: "relative",
+        outline: "none",
+        cursor: "text",
+      }}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onClick={() => outerRef.current?.focus()}
     >
       {status !== "ready" && (
         <div

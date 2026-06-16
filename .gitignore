@@ -34,3 +34,6 @@ pnpm-debug.log*
 # Build
 dist/
 build/
+
+# Separate repos (not part of this project)
+woolworks/

@@ -1,9 +1,24 @@
 import type { HarnessId } from './constants';
 
-const CONFIG_KEY = 'woolooloo-config';
-const TOGGLE_CONFIG_KEY = 'woolooloo-toggle-config';
 const AGENT_ENABLED_KEY = 'woolooloo-agent-enabled';
 const HARNESS_CONFIG_KEY = 'woolooloo-harness-config';
+
+export type ConfigKey =
+  | 'LINEAR_API_KEY' | 'LINEAR_WEBHOOK_SECRET'
+  | 'CLOCKIFY_API_KEY' | 'CLOCKIFY_WORKSPACE_ID'
+  | 'VLLM_HOST' | 'VLLM_MODEL' | 'VLLM_API_KEY'
+  | 'OPENROUTER_API_KEY' | 'OPENROUTER_BASE_URL'
+  | 'GITHUB_TOKEN' | 'GITHUB_OWNER' | 'GITHUB_REPO'
+  | 'BITBUCKET_APP_KEY' | 'BITBUCKET_CONSUMER_KEY' | 'BITBUCKET_CONSUMER_SECRET' | 'BITBUCKET_WORKSPACE'
+  | 'JIRA_EMAIL' | 'JIRA_API_TOKEN' | 'JIRA_DOMAIN'
+  | 'CONFLUENCE_EMAIL' | 'CONFLUENCE_API_TOKEN' | 'CONFLUENCE_DOMAIN'
+  | 'LINKEDIN_CLIENT_ID' | 'LINKEDIN_CLIENT_SECRET' | 'LINKEDIN_REDIRECT_URI'
+  | 'LINKEDIN_ACCESS_TOKEN' | 'LINKEDIN_COMPANY_ID'
+  | 'FACEBOOK_ACCESS_TOKEN' | 'FACEBOOK_PAGE_ID'
+  | 'NOTION_API_KEY' | 'NOTION_FOUNDER_INBOX_ID' | 'NOTION_CAMPAIGNS_DB_ID'
+  | 'SLACK_BOT_TOKEN' | 'SLACK_SIGNING_SECRET'
+  | 'TWILIO_ACCOUNT_SID' | 'TWILIO_AUTH_TOKEN' | 'TWILIO_WHATSAPP_FROM'
+  | 'XERO_CLIENT_ID' | 'XERO_CLIENT_SECRET' | 'XERO_TENANT_ID';
 
 export interface AppConfig {
   LINEAR_API_KEY?: string;
@@ -13,9 +28,15 @@ export interface AppConfig {
   VLLM_HOST?: string;
   VLLM_MODEL?: string;
   VLLM_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_BASE_URL?: string;
   LINKEDIN_CLIENT_ID?: string;
   LINKEDIN_CLIENT_SECRET?: string;
   LINKEDIN_REDIRECT_URI?: string;
+  LINKEDIN_ACCESS_TOKEN?: string;
+  LINKEDIN_COMPANY_ID?: string;
+  FACEBOOK_ACCESS_TOKEN?: string;
+  FACEBOOK_PAGE_ID?: string;
   GOOGLE_ADS_CUSTOMER_ID?: string;
   GOOGLE_ADS_DEVELOPER_TOKEN?: string;
   GOOGLE_ADS_REFRESH_TOKEN?: string;
@@ -70,60 +91,85 @@ export interface HarnessConfig {
   founder?: HarnessId;
 }
 
-function safeParseJson(key: string, fallback: unknown): unknown {
+// ── Safe JSON parsing for localStorage ──
+
+function safeParseJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
     const saved = localStorage.getItem(key);
     if (!saved) return fallback;
     const parsed = JSON.parse(saved);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as T;
     return fallback;
   } catch {
     return fallback;
   }
 }
 
+// ── API Config (server-only, proxied via API routes) ──
+
 /**
- * Get default config from NEXT_PUBLIC_* env vars (available in browser).
- * This provides fallback values when localStorage is empty.
+ * Fetch integration status from server-side API.
+ * Returns boolean flags — no actual keys are exposed.
  */
-function getDefaultConfigFromEnv(): AppConfig {
-  return {
-    LINEAR_API_KEY: process.env.NEXT_PUBLIC_LINEAR_API_KEY,
-    LINEAR_WEBHOOK_SECRET: process.env.NEXT_PUBLIC_LINEAR_WEBHOOK_SECRET,
-    CLOCKIFY_API_KEY: process.env.NEXT_PUBLIC_CLOCKIFY_API_KEY,
-    CLOCKIFY_WORKSPACE_ID: process.env.NEXT_PUBLIC_CLOCKIFY_WORKSPACE_ID,
-    VLLM_HOST: process.env.NEXT_PUBLIC_VLLM_HOST,
-    VLLM_MODEL: process.env.NEXT_PUBLIC_VLLM_MODEL,
-    VLLM_API_KEY: process.env.NEXT_PUBLIC_VLLM_API_KEY,
-    GITHUB_TOKEN: process.env.NEXT_PUBLIC_GITHUB_TOKEN,
-    GITHUB_OWNER: process.env.NEXT_PUBLIC_GITHUB_OWNER,
-    GITHUB_REPO: process.env.NEXT_PUBLIC_GITHUB_REPO,
-  };
+export async function fetchConfigStatus(): Promise<{
+  linear: boolean;
+  clockify: boolean;
+  github: boolean;
+  vllm: boolean;
+}> {
+  try {
+    const res = await fetch('/api/config/status');
+    if (!res.ok) return { linear: false, clockify: false, github: false, vllm: false };
+    return res.json();
+  } catch {
+    return { linear: false, clockify: false, github: false, vllm: false };
+  }
 }
 
+/**
+ * Save API key config via server-side API route.
+ * Keys are never stored in localStorage.
+ */
+export async function saveConfig(updates: Record<ConfigKey, string>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ error: 'Failed to save config' }));
+      return { success: false, error: errData.error || 'Failed to save config' };
+    }
+    // Invalidate status cache
+    _configStatusCache = null;
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Network error' };
+  }
+}
+
+/**
+ * For backward compatibility: getConfig() returns empty object.
+ * API routes should read from process.env directly.
+ */
 export function getConfig(): AppConfig {
-  const envDefaults = getDefaultConfigFromEnv();
-  const localStorageConfig = safeParseJson(CONFIG_KEY, {}) as AppConfig;
-  // Merge: env defaults first, then localStorage overrides
-  return { ...envDefaults, ...localStorageConfig };
+  return {};
 }
 
-export function saveConfig(updates: Partial<AppConfig>): void {
-  if (typeof window === 'undefined') return;
-  const current = getConfig();
-  localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...current, ...updates }));
-}
-
+/**
+ * For backward compatibility: getToggleConfig() returns empty object.
+ */
 export function getToggleConfig(): ToggleConfig {
-  return safeParseJson(TOGGLE_CONFIG_KEY, {}) as ToggleConfig;
+  return {};
 }
 
-export function saveToggleConfig(updates: Partial<ToggleConfig>): void {
-  if (typeof window === 'undefined') return;
-  const current = getToggleConfig();
-  localStorage.setItem(TOGGLE_CONFIG_KEY, JSON.stringify({ ...current, ...updates }));
+export function saveToggleConfig(_updates: Partial<ToggleConfig>): void {
+  // No-op — toggles are now server-side
 }
+
+// ── Agent & Harness Config (non-sensitive, localStorage safe) ──
 
 export function getAgentEnabled(): AgentEnabled {
   return safeParseJson(AGENT_ENABLED_KEY, {
@@ -133,7 +179,7 @@ export function getAgentEnabled(): AgentEnabled {
     sales: true,
     ops: true,
     founder: false,
-  }) as AgentEnabled;
+  });
 }
 
 export function saveAgentEnabled(updates: Partial<AgentEnabled>): void {
@@ -150,7 +196,7 @@ export function getHarnessConfig(): HarnessConfig {
     sales: 'pi',
     ops: 'pi',
     founder: 'pi',
-  }) as HarnessConfig;
+  });
 }
 
 export function saveHarnessConfig(updates: Partial<HarnessConfig>): void {
@@ -165,41 +211,41 @@ export function getAgentHarness(agentId: string): HarnessId {
 }
 
 export function getConfigToggle(key: string): boolean {
-  const toggleVal = getToggleConfig();
-  const configVal = getConfig();
-  const toggleKey = key as keyof ToggleConfig;
-  const configKey = key as keyof AppConfig;
-  return !!toggleVal[toggleKey] || configVal[configKey] === 'true';
+  return false; // No longer used
 }
 
-export function isLinearConfigured(): boolean {
-  return !!getConfig().LINEAR_API_KEY;
+// ── Cached integration status checks ──
+
+let _configStatusCache: Awaited<ReturnType<typeof fetchConfigStatus>> | null = null;
+
+export async function isLinearConfigured(): Promise<boolean> {
+  if (!_configStatusCache) _configStatusCache = await fetchConfigStatus();
+  return _configStatusCache.linear;
 }
 
-export function isClockifyConfigured(): boolean {
-  const config = getConfig();
-  // Clockify only needs API key - workspace ID is auto-detected from /user endpoint
-  return !!config.CLOCKIFY_API_KEY;
+export async function isClockifyConfigured(): Promise<boolean> {
+  if (!_configStatusCache) _configStatusCache = await fetchConfigStatus();
+  return _configStatusCache.clockify;
 }
 
-export function isVllmConfigured(): boolean {
-  return !!getConfig().VLLM_HOST;
+export async function isVllmConfigured(): Promise<boolean> {
+  if (!_configStatusCache) _configStatusCache = await fetchConfigStatus();
+  return _configStatusCache.vllm;
 }
 
-export function isGithubConfigured(): boolean {
-  return !!getConfig().GITHUB_TOKEN;
+export async function isGithubConfigured(): Promise<boolean> {
+  if (!_configStatusCache) _configStatusCache = await fetchConfigStatus();
+  return _configStatusCache.github;
 }
 
-export function isBitbucketConfigured(): boolean {
-  return !!getConfig().BITBUCKET_APP_KEY;
+export async function isBitbucketConfigured(): Promise<boolean> {
+  return false; // Not implemented yet
 }
 
-export function isJiraConfigured(): boolean {
-  const config = getConfig();
-  return !!config.JIRA_API_TOKEN && !!config.JIRA_DOMAIN;
+export async function isJiraConfigured(): Promise<boolean> {
+  return false; // Not implemented yet
 }
 
-export function isConfluenceConfigured(): boolean {
-  const config = getConfig();
-  return !!config.CONFLUENCE_API_TOKEN && !!config.CONFLUENCE_DOMAIN;
+export async function isConfluenceConfigured(): Promise<boolean> {
+  return false; // Not implemented yet
 }

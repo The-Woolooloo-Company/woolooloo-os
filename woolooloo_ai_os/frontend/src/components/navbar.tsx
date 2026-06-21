@@ -2,17 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
-import { logout } from "@/lib/auth";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { logout, getSession, ensureUserPermissions } from "@/lib/auth";
 import { ThemeToggle } from "./theme-toggle";
+import { getUserPages, ALL_PAGES, PageId } from "@/lib/access-control";
 
-const navItems = [
-  { href: "/", label: "Dashboard", icon: "dashboard" },
-  { href: "/clients", label: "Clients", icon: "groups" },
-  { href: "/workspace", label: "Workspace", icon: "workspace_premium" },
-  { href: "/agents", label: "Agents", icon: "psychology" },
-  { href: "/reports", label: "Reports", icon: "assessment" },
-];
 
 interface DropdownItem {
   href: string;
@@ -20,21 +14,6 @@ interface DropdownItem {
   icon: string;
   description?: string;
 }
-
-const opsItems: DropdownItem[] = [
-  { href: "/tasks", label: "Tasks", icon: "checklist", description: "Linear tasks & backlog" },
-  { href: "/time-tracking", label: "Time Tracking", icon: "schedule", description: "Clockify entries" },
-  { href: "/staff", label: "Staff", icon: "badge", description: "Team directory" },
-];
-
-const moreItems: DropdownItem[] = [
-  { href: "/wiki", label: "Wiki", icon: "auto_stories", description: "Knowledge base" },
-  { href: "/staging", label: "Staging", icon: "cloud", description: "Deploy previews to *.woolooloo.tech" },
-  { href: "/config", label: "Config", icon: "settings", description: "System settings" },
-  { href: "/audit", label: "Audit", icon: "receipt_long", description: "Activity audit log" },
-  { href: "/leads", label: "Leads", icon: "person_add", description: "Lead pipeline" },
-  { href: "/campaigns", label: "Campaigns", icon: "campaign", description: "Marketing campaigns" },
-];
 
 export function Navbar() {
   const pathname = usePathname();
@@ -44,6 +23,49 @@ export function Navbar() {
   const [moreOpen, setMoreOpen] = useState(false);
   const opsRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const session = getSession();
+
+
+
+  // Ensure permissions are initialized for this user
+  useEffect(() => {
+    if (session) ensureUserPermissions(session.username, session.isAdmin);
+  }, [session]);
+
+  // Tick to force re-render after permissions are set
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (session) {
+      const t = setTimeout(() => setTick(n => n + 1), 150);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  // Get user's accessible pages
+  const userPages = useMemo(() => {
+    if (!session) return [];
+    return getUserPages(session.username);
+  }, [session, tick]);
+
+  // Build nav items from user's accessible pages
+  const navItems = useMemo(() =>
+    userPages.filter(p => p.category === 'main').map(p => ({ href: p.path, label: p.label, icon: p.icon })),
+    [userPages]
+  );
+  const opsItems: DropdownItem[] = useMemo(() =>
+    userPages.filter(p => p.category === 'ops').map(p => ({
+      href: p.path, label: p.label, icon: p.icon,
+      description: p.id === 'tasks' ? 'Linear tasks & backlog' : p.id === 'time-tracking' ? 'Clockify entries' : 'Team directory',
+    })),
+    [userPages]
+  );
+  const moreItems: DropdownItem[] = useMemo(() =>
+    userPages.filter(p => p.category === 'more').map(p => ({
+      href: p.path, label: p.label, icon: p.icon,
+      description: p.id === 'wiki' ? 'Knowledge base' : p.id === 'staging' ? 'Deploy previews' : p.id === 'config' ? 'System settings' : p.id === 'audit' ? 'Activity audit log' : p.id === 'leads' ? 'Lead pipeline' : 'Marketing campaigns',
+    })),
+    [userPages]
+  );
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -101,6 +123,23 @@ export function Navbar() {
                 </Link>
               );
             })}
+
+            {/* WoolWorks shortcut */}
+                        <Link
+                href="/woolworks"
+                className={`
+                  relative flex items-center gap-2 rounded-full px-4 py-2 text-label-large font-medium
+                  transition-all duration-200 ease-in-out
+                  min-h-[48px] min-w-[48px]
+                  ${pathname === '/woolworks'
+                    ? "bg-md-secondary-container text-md-on-secondary-container"
+                    : "text-md-on-surface hover:bg-md-on-surface/5"
+                  }
+                `}
+              >
+                <span className="material-symbols-rounded text-20">build</span>
+                <span className="hidden xl:inline">WoolWorks</span>
+              </Link>
 
             {/* Ops dropdown */}
             <div ref={opsRef} className="relative">
@@ -206,9 +245,9 @@ export function Navbar() {
                 aria-haspopup="true"
               >
                 <div className="h-8 w-8 rounded-full bg-md-primary flex items-center justify-center text-md-on-primary text-label-large">
-                  D
+                  {session?.username?.[0]?.toUpperCase() || '?'}
                 </div>
-                <span className="hidden sm:inline text-label-large">Dustin</span>
+                <span className="hidden sm:inline text-label-large">{session?.username || 'User'}</span>
                 <span className="material-symbols-rounded text-18">
                   {userMenuOpen ? "expand_less" : "expand_more"}
                 </span>
@@ -217,8 +256,8 @@ export function Navbar() {
               {userMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-md-surface-container-high rounded-2xl shadow-md-3 overflow-hidden z-50">
                   <div className="px-4 py-3 border-b border-md-outline-variant/50">
-                    <p className="text-title-small text-md-on-surface">Dustin</p>
-                    <p className="text-body-small text-md-on-surface-variant">dustin@woolooloo.co.za</p>
+                    <p className="text-title-small text-md-on-surface">{session?.username || 'User'}</p>
+                    {session?.isAdmin && <p className="text-body-small text-md-primary">Admin</p>}
                   </div>
                   <Link href="/config" className="flex items-center gap-3 px-4 py-3 text-label-large text-md-on-surface hover:bg-md-on-surface/5 transition-colors">
                     <span className="material-symbols-rounded text-20">settings</span>

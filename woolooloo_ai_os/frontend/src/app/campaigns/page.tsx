@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Navbar } from "@/components/navbar";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/toast";
+import { SocialConnections } from "@/components/social-connections";
 import {
   getCampaigns, addCampaign, updateCampaign, deleteCampaign, seedMockCampaigns,
   Campaign, CampaignPlatform, CampaignStatus,
@@ -34,6 +35,13 @@ export default function CampaignsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dropdown, setDropdown] = useState<string | null>(null);
+  const [socialImpressions, setSocialImpressions] = useState(0);
+  const [socialClicks, setSocialClicks] = useState(0);
+
+  const handleSocialMetrics = useCallback((metrics: any, platform: string) => {
+    setSocialImpressions(metrics.impressions || 0);
+    setSocialClicks(metrics.clicks || 0);
+  }, []);
   const [formData, setFormData] = useState({
     name: "", platform: "linkedin" as CampaignPlatform, status: "active" as CampaignStatus,
     impressions: 0, clicks: 0, conversions: 0, spend: 0, budget: 0, startDate: "", endDate: "",
@@ -100,10 +108,12 @@ export default function CampaignsPage() {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard icon="campaign" label="Active" value={stats.active.toString()} color="primary" />
-          <StatCard icon="visibility" label="Impressions" value={`${(stats.impressions/1000).toFixed(1)}k`} color="info" />
+          <StatCard icon="visibility" label="Impressions" value={`${fmt((stats.impressions + socialImpressions) / 1000)}k`} color="info" />
           <StatCard icon="trending_up" label="CTR" value={`${stats.ctr}%`} color="tertiary" />
           <StatCard icon="payments" label="Spend" value={`R${stats.spend.toLocaleString()}`} color="success" />
         </div>
+
+        <SocialConnections onMetricsLoaded={handleSocialMetrics} />
 
         <Card variant="tonal" className="mb-6">
           <CardContent className="pt-6">
@@ -271,6 +281,13 @@ export default function CampaignsPage() {
 }
 
 interface StatCardProps { icon: string; label: string; value: string; color: "primary" | "info" | "tertiary" | "success"; }
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toString();
+}
+
 function StatCard({ icon, label, value, color }: StatCardProps) {
   const bgMap: Record<string, string> = {
     primary: "bg-md-primary text-md-on-primary", info: "bg-info text-on-info",

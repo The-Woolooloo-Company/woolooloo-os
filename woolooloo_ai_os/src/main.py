@@ -6,19 +6,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import agents, commands, status, webhooks
 from .config import get_settings
+from .llm.client import llm_client
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup
     asyncio.create_task(check_llm_health())
+    print("✓ vLLM health check started")
     yield
+    # Shutdown
+    await llm_client.close()
+    print("✓ LLM clients closed")
 
 
 async def check_llm_health():
-    from .llm.client import llm_client
-
     while True:
         try:
             is_available = await llm_client._is_vllm_available()
@@ -38,12 +42,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS - Restrict to known origins in production
+_allowed_origins = [
+    "http://localhost:3000",    # Next.js dev
+    "http://localhost:5173",    # Vite dev (if used)
+    "http://192.168.1.161:3000",  # Local deployment
+    "https://os.woolooloo.tech",  # Production
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 app.include_router(webhooks.router)

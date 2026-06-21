@@ -9,29 +9,51 @@ import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useToast } from "@/components/toast";
 import {
-  getConfig,
   saveConfig,
   getAgentEnabled,
   saveAgentEnabled,
   getHarnessConfig,
   saveHarnessConfig,
-  isLinearConfigured,
-  isClockifyConfigured,
-  isGithubConfigured,
-  isVllmConfigured,
   AppConfig,
   AgentEnabled,
   HarnessConfig,
 } from "@/lib/config-store";
+import { getCredentials, addUser, LoginCredentials } from "@/lib/auth";
+import {
+  getAllPermissions, saveAllPermissions, updateUserPermissions,
+  deleteUserPermissions, ALL_PAGES, PageId, UserPermissions,
+  applyRolePreset, ROLE_PRESETS,
+} from "@/lib/access-control";
 import { HARNESS_OPTIONS, HarnessId } from "@/lib/constants";
+
+type ConfigStatus = { linear: boolean; clockify: boolean; github: boolean; vllm: boolean; openrouter: boolean; notion: boolean; slack: boolean; twilio: boolean; xero: boolean };
 
 export default function ConfigPage() {
   const { showToast } = useToast();
-  const [section, setSection] = useState<"integrations" | "agents" | "appearance">("integrations");
+  const [section, setSection] = useState<"integrations" | "agents" | "users" | "appearance">("integrations");
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
 
-  // State for API keys
-  const [config, setConfig] = useState<AppConfig>({});
-  const [dirty, setDirty] = useState<Set<string>>(new Set());
+  // Integration status (fetched from server)
+  const [configStatus, setConfigStatus] = useState<ConfigStatus>({
+    linear: false, clockify: false, github: false, vllm: false, openrouter: false,
+    notion: false, slack: false, twilio: false, xero: false,
+  });
+  const [configDirty, setConfigDirty] = useState<Set<string>>(new Set());
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+
+  // Fetch integration status on mount
+  useEffect(() => {
+    fetch('/api/config/status')
+      .then(r => r.json() as Promise<ConfigStatus>)
+      .then(setConfigStatus)
+      .catch(() => {});
+  }, []);
+
+  // Users & Permissions state
+  const [users, setUsers] = useState<LoginCredentials[]>([]);
+  const [permissions, setPermissions] = useState<UserPermissions[]>([]);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState({ username: '', password: '', isAdmin: false });
 
   // State for agent toggles
   const [agentEnabled, setAgentEnabled] = useState<AgentEnabled>({});
@@ -40,26 +62,44 @@ export default function ConfigPage() {
   const [harnessConfig, setHarnessConfig] = useState<HarnessConfig>({});
 
   useEffect(() => {
-    setConfig(getConfig());
     setAgentEnabled(getAgentEnabled());
     setHarnessConfig(getHarnessConfig());
+    setUsers(getCredentials());
+    setPermissions(getAllPermissions());
   }, []);
 
-  const handleConfigChange = (key: keyof AppConfig, value: string) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-    setDirty(prev => new Set(prev).add(key));
+  const saveUsersAndPerms = () => {
+    setUsers(getCredentials());
+    setPermissions(getAllPermissions());
   };
 
-  const handleSaveConfig = () => {
-    const updates: Partial<AppConfig> = {};
-    dirty.forEach(key => {
-      updates[key as keyof AppConfig] = config[key as keyof AppConfig];
+  const handleConfigChange = (key: string, value: string) => {
+    setConfigValues(prev => ({ ...prev, [key]: value }));
+    setConfigDirty(prev => new Set(prev).add(key));
+  };
+
+  const handleSaveConfig = async () => {
+    const updates: Record<string, string> = {};
+    configDirty.forEach(key => {
+      if (configValues[key] !== undefined) {
+        updates[key] = configValues[key];
+      }
     });
-    saveConfig(updates);
-    setDirty(new Set());
-    showToast("Configuration saved", "success");
+    if (Object.keys(updates).length === 0) return;
+    
+    const result = await saveConfig(updates);
+    if (result.success) {
+      setConfigDirty(new Set());
+      // Refresh status
+      try {
+        const res = await fetch('/api/config/status');
+        if (res.ok) setConfigStatus(await res.json());
+      } catch {}
+      showToast("Configuration saved", "success");
+    } else {
+      showToast(result.error || "Failed to save config", "error");
+    }
   };
-
   const handleAgentToggle = (agent: keyof AgentEnabled) => {
     setAgentEnabled(prev => {
       const updated = { ...prev, [agent]: !prev[agent] };
@@ -77,28 +117,24 @@ export default function ConfigPage() {
   };
 
   const integrations = [
-    { label: "Linear", status: isLinearConfigured(), icon: "bolt", desc: "Project management & tasks" },
-    { label: "Clockify", status: isClockifyConfigured(), icon: "schedule", desc: "Time tracking & billing" },
-    { label: "GitHub", status: isGithubConfigured(), icon: "code", desc: "Code repos & CI" },
-    { label: "vLLM", status: isVllmConfigured(), icon: "memory", desc: "Local AI model inference" },
+    { label: "Linear", status: configStatus.linear, icon: "bolt", desc: "Project management & tasks" },
+    { label: "Clockify", status: configStatus.clockify, icon: "schedule", desc: "Time tracking & billing" },
+    { label: "GitHub", status: configStatus.github, icon: "code", desc: "Code repos & CI" },
+    { label: "vLLM", status: configStatus.vllm, icon: "memory", desc: "Local AI model inference" },
+    { label: "OpenRouter", status: configStatus.openrouter, icon: "cloud", desc: "Fallback AI inference" },
   ];
 
   const apiKeys = [
-    { key: "LINEAR_API_KEY" as keyof AppConfig, label: "Linear API Key", type: "password" },
-    { key: "LINEAR_WEBHOOK_SECRET" as keyof AppConfig, label: "Linear Webhook Secret", type: "password" },
-    { key: "CLOCKIFY_API_KEY" as keyof AppConfig, label: "Clockify API Key", type: "password" },
-    { key: "CLOCKIFY_WORKSPACE_ID" as keyof AppConfig, label: "Clockify Workspace ID", type: "text" },
-    { key: "GITHUB_TOKEN" as keyof AppConfig, label: "GitHub Token", type: "password" },
-    { key: "GITHUB_OWNER" as keyof AppConfig, label: "GitHub Owner / Org", type: "text" },
-    { key: "GITHUB_REPO" as keyof AppConfig, label: "GitHub Repo", type: "text" },
-    { key: "BITBUCKET_APP_KEY" as keyof AppConfig, label: "Bitbucket App Key", type: "password" },
-    { key: "JIRA_DOMAIN" as keyof AppConfig, label: "Jira Domain (e.g. yourcompany.atlassian.net)", type: "text" },
-    { key: "JIRA_API_TOKEN" as keyof AppConfig, label: "Jira API Token", type: "password" },
-    { key: "CONFLUENCE_DOMAIN" as keyof AppConfig, label: "Confluence Domain (e.g. yourcompany.atlassian.net)", type: "text" },
-    { key: "CONFLUENCE_API_TOKEN" as keyof AppConfig, label: "Confluence API Token", type: "password" },
-    { key: "VLLM_HOST" as keyof AppConfig, label: "vLLM Host", type: "text" },
-    { key: "VLLM_MODEL" as keyof AppConfig, label: "vLLM Model", type: "text" },
-    { key: "VLLM_API_KEY" as keyof AppConfig, label: "vLLM API Key", type: "password" },
+    { key: "LINEAR_API_KEY", label: "Linear API Key", type: "password" },
+    { key: "LINEAR_WEBHOOK_SECRET", label: "Linear Webhook Secret", type: "password" },
+    { key: "CLOCKIFY_API_KEY", label: "Clockify API Key", type: "password" },
+    { key: "CLOCKIFY_WORKSPACE_ID", label: "Clockify Workspace ID", type: "text" },
+    { key: "GITHUB_TOKEN", label: "GitHub Token", type: "password" },
+    { key: "GITHUB_OWNER", label: "GitHub Owner / Org", type: "text" },
+    { key: "GITHUB_REPO", label: "GitHub Repo", type: "text" },
+    { key: "VLLM_HOST", label: "vLLM Host", type: "text" },
+    { key: "VLLM_MODEL", label: "vLLM Model", type: "text" },
+    { key: "VLLM_API_KEY", label: "vLLM API Key", type: "password" },
   ];
 
   const agents: { id: keyof AgentEnabled; label: string; icon: string; description: string }[] = [
@@ -113,6 +149,7 @@ export default function ConfigPage() {
   const sections = [
     { id: "integrations" as const, label: "Integrations", icon: "link" },
     { id: "agents" as const, label: "Agents", icon: "psychology" },
+    { id: "users" as const, label: "Users", icon: "manage_accounts" },
     { id: "appearance" as const, label: "Appearance", icon: "palette" },
   ];
 
@@ -180,10 +217,10 @@ export default function ConfigPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>API Keys</CardTitle>
-                  {dirty.size > 0 && (
+                  {configDirty.size > 0 && (
                     <Button variant="filled" size="sm" onClick={handleSaveConfig}>
                       <span className="material-symbols-rounded text-18 mr-1">save</span>
-                      Save ({dirty.size})
+                      Save ({configDirty.size})
                     </Button>
                   )}
                 </div>
@@ -194,7 +231,7 @@ export default function ConfigPage() {
                     <Input
                       label={field.label}
                       type={field.type}
-                      value={(config[field.key] as string) || ""}
+                      value={configValues[field.key] || ""}
                       onChange={e => handleConfigChange(field.key, e.target.value)}
                       placeholder={`Enter ${field.label}...`}
                     />
@@ -278,6 +315,229 @@ export default function ConfigPage() {
                     </tbody>
                   </table>
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Users ── */}
+        {section === "users" && (
+          <div className="space-y-6">
+            {/* Add User */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Add User</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-3">
+                  <Input
+                    label="Username"
+                    value={newUser.username}
+                    onChange={e => setNewUser(p => ({ ...p, username: e.target.value }))}
+                    placeholder="Enter username"
+                  />
+                  <Input
+                    label="Password"
+                    type="password"
+                    value={newUser.password}
+                    onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))}
+                    placeholder="Enter password"
+                  />
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 px-4 min-h-[56px]">
+                      <input
+                        type="checkbox"
+                        checked={newUser.isAdmin}
+                        onChange={e => setNewUser(p => ({ ...p, isAdmin: e.target.checked }))}
+                        className="w-5 h-5 rounded border-md-outline text-md-primary"
+                      />
+                      <span className="text-label-medium text-md-on-surface">Admin</span>
+                    </label>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      variant="filled"
+                      onClick={async () => {
+                        if (!newUser.username || !newUser.password) {
+                          showToast("Please fill in username and password", "error");
+                          return;
+                        }
+                        const result = await addUser(newUser);
+                        if (result.success) {
+                          if (newUser.isAdmin) {
+                            updateUserPermissions(newUser.username, { isAdmin: true, enabledPages: ALL_PAGES.map(p => p.id) });
+                          } else {
+                            updateUserPermissions(newUser.username, { isAdmin: false, enabledPages: [] });
+                          }
+                          setNewUser({ username: '', password: '', isAdmin: false });
+                          setUsers(getCredentials());
+                          setPermissions(getAllPermissions());
+                          showToast("User added", "success");
+                        } else {
+                          showToast(result.error || "Failed to add user", "error");
+                        }
+                      }}
+                    >
+                      <span className="material-symbols-rounded text-18 mr-1">person_add</span>
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* User Permissions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>User Permissions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {users.map(user => {
+                  const perm = permissions.find(p => p.username === user.username);
+                  const isEditing = editingUser === user.username;
+                  return (
+                    <div key={user.username} className="rounded-xl border border-md-outline-variant/50 overflow-hidden">
+                      <div className="flex items-center justify-between p-4 bg-md-surface-container/50">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-md-primary flex items-center justify-center text-md-on-primary text-label-large font-bold">
+                            {user.username[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-label-large text-md-on-surface">{user.username}</p>
+                            <div className="flex gap-2 mt-1">
+                              <Badge variant={user.isAdmin ? "primary-tonal" : "secondary-tonal"}>
+                                {user.isAdmin ? "Admin" : "Member"}
+                              </Badge>
+                              {perm && (
+                                <Badge variant="info-tonal">
+                                  {perm.enabledPages.length}/{ALL_PAGES.length} pages
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant={isEditing ? "tonal" : "text"}
+                            size="sm"
+                            onClick={() => setEditingUser(isEditing ? null : user.username)}
+                          >
+                            <span className="material-symbols-rounded text-18 mr-1">{isEditing ? "close" : "edit"}</span>
+                            {isEditing ? "Done" : "Edit"}
+                          </Button>
+                          {!user.isAdmin && (
+                            <Button
+                              variant="text"
+                              size="sm"
+                              onClick={() => {
+                                deleteUserPermissions(user.username);
+                                const newUsers = users.filter(u => u.username !== user.username);
+                                localStorage.setItem('woolooloo-users', JSON.stringify(newUsers));
+                                setUsers(newUsers);
+                                setPermissions(getAllPermissions());
+                                showToast("User removed", "success");
+                              }}
+                              className="text-md-error"
+                            >
+                              <span className="material-symbols-rounded text-18">delete</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {isEditing && (
+                        <div className="p-4 border-t border-md-outline-variant/50 space-y-4">
+                          {/* Admin toggle */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-label-large text-md-on-surface">Admin Access</p>
+                              <p className="text-body-small text-md-on-surface-variant">Admins can access all pages</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={user.isAdmin}
+                                onChange={e => {
+                                  const newUsers = users.map(u =>
+                                    u.username === user.username ? { ...u, isAdmin: e.target.checked } : u
+                                  );
+                                  localStorage.setItem('woolooloo-users', JSON.stringify(newUsers));
+                                  updateUserPermissions(user.username, { isAdmin: e.target.checked, enabledPages: e.target.checked ? ALL_PAGES.map(p => p.id) : perm?.enabledPages || [] });
+                                  setUsers(newUsers);
+                                  setPermissions(getAllPermissions());
+                                  showToast("Admin status updated", "success");
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-md-on-surface-variant/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-md-primary" />
+                            </label>
+                          </div>
+
+                          {/* Role presets */}
+                          {!user.isAdmin && (
+                            <>
+                              <div>
+                                <p className="text-label-medium text-md-on-surface-variant mb-2">Quick Presets</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(ROLE_PRESETS).filter(([k]) => k !== 'admin').map(([name, pages]) => (
+                                    <Button
+                                      key={name}
+                                      variant={perm?.enabledPages.length === pages.length && pages.every(p => perm.enabledPages.includes(p)) ? "filled" : "tonal"}
+                                      size="sm"
+                                      onClick={() => {
+                                        applyRolePreset(user.username, name);
+                                        setPermissions(getAllPermissions());
+                                        showToast(`Applied "${name}" preset`, "success");
+                                      }}
+                                    >
+                                      {name.charAt(0).toUpperCase() + name.slice(1)}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Page toggles */}
+                              {!user.isAdmin && (
+                                <div>
+                                  <p className="text-label-medium text-md-on-surface-variant mb-2">Page Access</p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {ALL_PAGES.map(page => {
+                                      const enabled = perm?.enabledPages.includes(page.id);
+                                      return (
+                                        <label key={page.id} className="flex items-center gap-3 p-3 rounded-lg bg-md-surface-container/50 cursor-pointer hover:bg-md-surface-container/80">
+                                          <input
+                                            type="checkbox"
+                                            checked={!!enabled}
+                                            onChange={() => {
+                                              const currentPages = perm?.enabledPages || [];
+                                              const newPages = enabled
+                                                ? currentPages.filter(p => p !== page.id)
+                                                : [...currentPages, page.id];
+                                              updateUserPermissions(user.username, { enabledPages: newPages });
+                                              setPermissions(getAllPermissions());
+                                            }}
+                                            className="w-4 h-4 rounded border-md-outline text-md-primary focus:ring-md-primary"
+                                          />
+                                          <span className="material-symbols-rounded text-18 text-md-primary">{page.icon}</span>
+                                          <span className="text-label-large text-md-on-surface">{page.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {users.length === 0 && (
+                  <p className="text-body-large text-md-on-surface-variant text-center py-8">No users configured. Add the first user above.</p>
+                )}
               </CardContent>
             </Card>
           </div>

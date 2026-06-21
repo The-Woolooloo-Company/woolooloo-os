@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Woolooloo AI OS"
     APP_VERSION: str = "0.1.0"
+    APP_URL: str = "https://woolooloo.ai"
     DEBUG: bool = False
     SECRET_KEY: str = "dev-secret-key-change-in-production"
 

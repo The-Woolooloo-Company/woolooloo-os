@@ -45,13 +45,13 @@ function getEnvVar(name: string): string | undefined {
 }
 
 function clockifyHeaders(): Record<string, string> {
-  return { 'x-api-key': getEnvVar('NEXT_PUBLIC_CLOCKIFY_API_KEY') || '' };
+  return { 'x-api-key': getEnvVar('CLOCKIFY_API_KEY') || getEnvVar('NEXT_PUBLIC_CLOCKIFY_API_KEY') || '' };
 }
 
 function linearHeaders(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
-    'Authorization': getEnvVar('NEXT_PUBLIC_LINEAR_API_KEY') || '',
+    'Authorization': getEnvVar('LINEAR_API_KEY') || getEnvVar('NEXT_PUBLIC_LINEAR_API_KEY') || '',
   };
 }
 
@@ -107,7 +107,7 @@ function matchScore(description: string, title: string, identifier: string): num
 }
 
 function getWorkspaceIdFromEnv(): string | undefined {
-  const stored = getEnvVar('NEXT_PUBLIC_CLOCKIFY_WORKSPACE_ID');
+  const stored = getEnvVar('CLOCKIFY_WORKSPACE_ID') || getEnvVar('NEXT_PUBLIC_CLOCKIFY_WORKSPACE_ID');
   if (stored) {
     const cleaned = stored.replace(/["']/g, '');
     if (cleaned.length === 24 && /^[0-9a-f]+$/.test(cleaned)) return cleaned;

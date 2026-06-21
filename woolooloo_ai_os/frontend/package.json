@@ -7,13 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "dev:5000": "PORT=5000 next dev"
+    "dev:5000": "PORT=5000 next dev",
+    "bootstrap": "node scripts/bootstrap-admin.js"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.18.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "bootstrap": "^5.3.8",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
@@ -24,7 +26,8 @@
     "react-datepicker": "^9.1.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.13.0",
-    "tailwind-merge": "^2.5.0"
+    "tailwind-merge": "^2.5.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",

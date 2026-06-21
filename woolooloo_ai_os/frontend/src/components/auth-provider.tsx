@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { isAuthenticated, getSession } from "@/lib/auth";
+import { isAuthenticated, getSession, ensureUserPermissions, bootstrapDefaultUser } from "@/lib/auth";
 
 interface AuthContextType {
   authenticated: boolean;
@@ -22,6 +22,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<{ username: string; isAdmin: boolean } | null>(null);
 
   useEffect(() => {
+    // Bootstrap default admin user on first load
+    bootstrapDefaultUser();
+    
     if (pathname === "/login") return; // Don't redirect on login page
 
     const checkAuth = () => {
@@ -29,6 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const sess = getSession();
       setAuthenticated(auth);
       setSession(sess ? { username: sess.username, isAdmin: sess.isAdmin } : null);
+      // Ensure permissions exist for the current user on every page load
+      if (sess) ensureUserPermissions(sess.username, sess.isAdmin);
 
       if (!auth && pathname !== "/login") {
         router.push("/login");

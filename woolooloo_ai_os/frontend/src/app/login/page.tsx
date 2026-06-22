@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { login } from "@/lib/auth";
+import { setSessionCookie } from "@/lib/session-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,12 +21,14 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const success = await login(username, password);
-      if (success) {
+      const result = await login(username, password);
+      if (result.success) {
+        // Set HTTP-only session cookie via API
+        await setSessionCookie(username);
         router.push("/");
         router.refresh();
       } else {
-        setError("Invalid username or password");
+        setError(result.error || "Invalid username or password");
       }
     } catch {
       setError("An error occurred. Please try again.");

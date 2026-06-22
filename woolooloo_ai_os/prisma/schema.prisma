@@ -84,6 +84,38 @@ model Task {
   updatedAt     DateTime  @updatedAt
 }
 
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  isAdmin   Boolean  @default(false)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions  Session[]
+  auditLogs AuditLog[] @relation("UserAuditLogs")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation("UserAuditLogs", fields: [userId], references: [id])
+  action    String
+  resource  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
 model RevenueSnapshot {
   id         String   @id @default(cuid())
   mrr        Float

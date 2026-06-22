@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     APP_URL: str = "https://woolooloo.ai"
     DEBUG: bool = False
     SECRET_KEY: str = "dev-secret-key-change-in-production"
+    SESSION_SECRET: str = "dev-session-secret-change-in-production"
 
     # Database
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/woolooloo_os"

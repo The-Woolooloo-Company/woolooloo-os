@@ -2,17 +2,44 @@ generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+model User {
+  id        String    @id @default(cuid())
+  username  String    @unique
+  password  String
+  isAdmin   Boolean   @default(false)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions  Session[]
+  auditLogs AuditLog[] @relation("UserAuditLogs")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation("UserAuditLogs", fields: [userId], references: [id])
+  action    String
+  resource  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
 }
 
 model Organization {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  linearId  String?   @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  linearId  String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   members   Member[]
   agents    Agent[]
   tasks     Task[]
@@ -32,16 +59,16 @@ model Member {
 }
 
 model Agent {
-  id             String     @id @default(cuid())
-  name           String     @unique
+  id             String      @id @default(cuid())
+  name           String      @unique
   status         AgentStatus @default(IDLE)
-  enabled        Boolean    @default(true)
+  enabled        Boolean     @default(true)
   lastRun        DateTime?
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
   executions     AgentExecution[]
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
 
 model AgentExecution {
@@ -69,51 +96,19 @@ model LinearEvent {
 }
 
 model Task {
-  id            String    @id @default(cuid())
-  title         String
-  description   String?
-  source        TaskSource
-  linearId      String?
-  notionId      String?
-  status        TaskStatus @default(PENDING)
-  priority      Int?
-  assignedTo    String?
+  id             String     @id @default(cuid())
+  title          String
+  description    String?
+  source         TaskSource
+  linearId       String?
+  notionId       String?
+  status         TaskStatus @default(PENDING)
+  priority       Int?
+  assignedTo     String?
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-}
-
-model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  password  String
-  isAdmin   Boolean  @default(false)
-  lastLogin DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  sessions  Session[]
-  auditLogs AuditLog[] @relation("UserAuditLogs")
-}
-
-model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
-
-model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  user      User?    @relation("UserAuditLogs", fields: [userId], references: [id])
-  action    String
-  resource  String?
-  details   Json?
-  ipAddress String?
-  createdAt DateTime @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model RevenueSnapshot {
